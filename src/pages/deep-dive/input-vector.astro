@@ -1,0 +1,51 @@
+---
+import Post from '../../layouts/Post.astro';
+const base = import.meta.env.BASE_URL;
+---
+<Post title="The 583-Dimensional Input Vector" date="April 2026" activeTab="deep-dive">
+  <p>
+    The neural network needs to see the game state as a fixed-size numeric vector.
+    Translating a complex card game state — with variable-length hands, multiple
+    enemies, and dozens of status effects — into 583 numbers is one of the core
+    engineering challenges of this project.
+  </p>
+
+  <div class="hero-img">
+    <img src={`${base}screenshots/combat1.png`} alt="STS2 combat state" />
+  </div>
+
+  <h2>Vector Breakdown</h2>
+  <p>The 583 dimensions break down into six groups:</p>
+  <ul>
+    <li><strong>18 player scalars</strong> — HP, block, energy, turn number, debuffs, action counters</li>
+    <li><strong>270 hand card features</strong> — 10 slots x (16d learned embedding + 11 extras like cost, type, keywords)</li>
+    <li><strong>252 enemy features</strong> — 6 slots x (16d learned embedding + 17 scalars + 4 intent flags + power slots)</li>
+    <li><strong>24 pile features</strong> — Draw, discard, and exhaust piles, each mean-pooled to 8d</li>
+    <li><strong>10 relic features</strong> — All relics mean-pooled (8d embedding + counter + active flag)</li>
+    <li><strong>9 power features</strong> — Active player powers mean-pooled (8d embedding + amount)</li>
+  </ul>
+
+  <h2>Learned Embeddings</h2>
+  <p>
+    Card names, enemy types, relics, and powers are represented as learned embeddings
+    rather than one-hot vectors. Each ID maps to a vocabulary index, which looks up a
+    dense vector from an <code>nn.Embedding</code> layer. These embeddings are trained
+    end-to-end with the policy — the network learns its own representation of what
+    each card or enemy "means."
+  </p>
+  <p>
+    This is critical because the vocabulary grows as training progresses through
+    curriculum stages. New cards and enemies get new embedding rows, initialized
+    randomly, and the network learns to use them.
+  </p>
+
+  <h2>Normalization</h2>
+  <p>
+    All numeric values are normalized to roughly [0, 1] or [-1, 1]. HP is divided by
+    max HP. Debuff stacks are divided by observed game maximums (e.g. poison / 200,
+    strength / 300). This keeps the input scale consistent so the network doesn't
+    overweight large raw numbers.
+  </p>
+
+  <p><em>This is a placeholder post. Replace with your actual content.</em></p>
+</Post>

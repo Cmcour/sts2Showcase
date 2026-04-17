@@ -1,0 +1,39 @@
+---
+import Post from '../../layouts/Post.astro';
+---
+<Post title="Reward Shaping: Teaching an Agent What Winning Means" date="April 2026" activeTab="learned">
+  <p>
+    The first thing you learn building an RL system is that your reward function
+    is everything. Get it wrong and the agent will find creative ways to maximize
+    reward without doing what you actually want.
+  </p>
+
+  <h2>Version 1: Win/Loss Only</h2>
+  <p>
+    The simplest reward: +1 for winning, -1 for losing. The agent learned... nothing.
+    With a sparse reward signal and dozens of actions per episode, the credit assignment
+    problem was too hard. The agent couldn't figure out which of its 30+ actions in a
+    fight actually mattered.
+  </p>
+
+  <h2>Adding HP Preservation</h2>
+  <p>
+    I added a per-step reward based on HP changes. Lose HP? Small negative reward.
+    Block damage? No penalty. This gave the agent much denser signal and it started
+    learning to play defensive cards.
+  </p>
+  <p>
+    But then it learned to stall. If ending the turn meant the enemy attacks, the
+    agent preferred to... just not end its turn. It would play every card it could,
+    even useless ones, to delay the inevitable.
+  </p>
+
+  <h2>The Turn Penalty</h2>
+  <p>
+    Adding a small penalty for each turn incentivized the agent to finish fights
+    quickly. Combined with the HP reward, it learned to balance aggression with
+    defense — play damage cards when safe, block when the enemy is about to hit hard.
+  </p>
+
+  <p><em>This is a placeholder post. Replace with your actual content.</em></p>
+</Post>

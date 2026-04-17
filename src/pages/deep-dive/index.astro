@@ -1,0 +1,35 @@
+---
+import Base from '../../layouts/Base.astro';
+const base = import.meta.env.BASE_URL;
+
+const posts = [
+  {
+    slug: 'input-vector',
+    title: 'The 583-Dimensional Input Vector',
+    date: 'April 2026',
+    excerpt: 'How a complex game state with cards, enemies, relics, and powers gets encoded into a fixed-size vector for the neural network.',
+  },
+  {
+    slug: 'distributed-training',
+    title: 'Distributed Training Over a Laptop Fleet',
+    date: 'April 2026',
+    excerpt: 'Running 11 headless game instances across multiple machines, syncing weights over TCP, and debugging flaky LAN connections.',
+  },
+];
+---
+<Base title="Deep Dives" activeTab="deep-dive">
+  <h1>Deep Dives</h1>
+  <p class="hero-subtitle">Technical deep dives into specific components of the system.</p>
+
+  <ul class="post-list">
+    {posts.map(post => (
+      <li class="post-item">
+        <a href={`${base}deep-dive/${post.slug}/`}>
+          <div class="post-title">{post.title}</div>
+          <div class="post-date">{post.date}</div>
+          <div class="post-excerpt">{post.excerpt}</div>
+        </a>
+      </li>
+    ))}
+  </ul>
+</Base>

@@ -1,0 +1,38 @@
+---
+import Post from '../../layouts/Post.astro';
+---
+<Post title="Why Curriculum Learning Was Essential" date="April 2026" activeTab="learned">
+  <p>
+    When I first started training, I threw the agent into the full game — all cards,
+    all enemies, random decks. It learned nothing useful after thousands of episodes.
+  </p>
+
+  <h2>The Problem</h2>
+  <p>
+    With 80+ possible cards in the deck and 30+ different enemies, the state space
+    was enormous. The agent couldn't even learn that "playing Strike deals damage"
+    because it was drowning in complexity. Random decks meant it rarely saw the same
+    card twice, so it couldn't build associations.
+  </p>
+
+  <h2>Staged Curriculum</h2>
+  <p>
+    I broke training into 13 stages. Stage 0 uses only the starter deck (Strikes,
+    Defends, Neutralize, Survivor) against a single weak enemy. The agent can focus
+    on learning the basics: play attacks to deal damage, play defense to block.
+  </p>
+  <p>
+    Each subsequent stage adds a few more cards or a new enemy type. By the time the
+    agent reaches Stage 12 with the full card pool and elite enemies, it already has
+    a solid foundation of card game fundamentals.
+  </p>
+
+  <h2>Automatic Stage Advancement</h2>
+  <p>
+    The learner monitors the agent's win rate over a rolling window. When it plateaus
+    above a threshold, it advances to the next stage. This means the agent spends
+    exactly as long as it needs on each difficulty level.
+  </p>
+
+  <p><em>This is a placeholder post. Replace with your actual content.</em></p>
+</Post>

@@ -1,0 +1,35 @@
+---
+import Base from '../../layouts/Base.astro';
+const base = import.meta.env.BASE_URL;
+
+const posts = [
+  {
+    slug: 'reward-shaping',
+    title: 'Reward Shaping: Teaching an Agent What Winning Means',
+    date: 'April 2026',
+    excerpt: 'How I designed the reward function to balance winning, preserving HP, and not stalling — and the surprising ways the agent exploited each version.',
+  },
+  {
+    slug: 'curriculum-design',
+    title: 'Why Curriculum Learning Was Essential',
+    date: 'April 2026',
+    excerpt: 'The agent couldn\'t learn anything useful when thrown into the deep end. A 13-stage curriculum made all the difference.',
+  },
+];
+---
+<Base title="What I Learned" activeTab="learned">
+  <h1>What I Learned</h1>
+  <p class="hero-subtitle">Lessons from building a reinforcement learning system for a complex card game.</p>
+
+  <ul class="post-list">
+    {posts.map(post => (
+      <li class="post-item">
+        <a href={`${base}learned/${post.slug}/`}>
+          <div class="post-title">{post.title}</div>
+          <div class="post-date">{post.date}</div>
+          <div class="post-excerpt">{post.excerpt}</div>
+        </a>
+      </li>
+    ))}
+  </ul>
+</Base>

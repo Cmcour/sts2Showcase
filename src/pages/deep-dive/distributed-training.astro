@@ -1,0 +1,36 @@
+---
+import Post from '../../layouts/Post.astro';
+---
+<Post title="Distributed Training Over a Laptop Fleet" date="April 2026" activeTab="deep-dive">
+  <p>
+    Training on a single game instance is painfully slow — each combat takes 10-30
+    seconds of real time. To get enough episodes for PPO to converge, I needed to
+    parallelize across multiple machines.
+  </p>
+
+  <h2>The Architecture</h2>
+  <p>
+    The system uses an actor-learner split. One machine runs the learner (PPO training
+    loop). Multiple worker machines each run several headless game instances connected
+    to a local actor proxy. The actor proxies do local inference with a copy of the
+    policy and push completed episodes to the learner over TCP.
+  </p>
+
+  <h2>Weight Synchronization</h2>
+  <p>
+    Every 16 episodes, each actor proxy pulls fresh weights from the learner. The
+    learner serializes the full state dict (including vocab mappings) and sends it
+    over the socket. The actor proxy loads the new weights, resizes embeddings if
+    the vocabulary grew, and continues.
+  </p>
+
+  <h2>Challenges</h2>
+  <ul>
+    <li><strong>Flaky LAN connections</strong> — Workers drop and reconnect. The protocol handles this with automatic retry and reconnect logic.</li>
+    <li><strong>Stale weights</strong> — Workers running old weights produce off-policy data. The 16-episode pull interval balances freshness vs overhead.</li>
+    <li><strong>Remote deployment</strong> — Getting game instances started on remote machines over SSH on Windows required creative workarounds (scheduled tasks as a process detachment mechanism).</li>
+    <li><strong>Device Guard</strong> — Some worker machines block the game executable via Windows security policies, requiring per-machine troubleshooting.</li>
+  </ul>
+
+  <p><em>This is a placeholder post. Replace with your actual content.</em></p>
+</Post>

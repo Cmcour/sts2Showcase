@@ -1,0 +1,85 @@
+---
+import Base from '../layouts/Base.astro';
+const base = import.meta.env.BASE_URL;
+---
+<Base title="About" activeTab="about">
+  <h1>Training an RL Agent to Play Slay the Spire 2</h1>
+  <p class="hero-subtitle">
+    A distributed PPO agent that learns to play Slay the Spire 2 combat from scratch,
+    using a custom C# game mod, TCP bridge, and Python training pipeline.
+  </p>
+
+  <div class="hero-img">
+    <img src={`${base}screenshots/combat1.png`} alt="STS2 combat gameplay" />
+  </div>
+
+  <div class="tag-row">
+    <span class="tag">Python</span>
+    <span class="tag">PyTorch</span>
+    <span class="tag">PPO</span>
+    <span class="tag">C# + Harmony</span>
+    <span class="tag">Godot</span>
+    <span class="tag">TCP Sockets</span>
+    <span class="tag">Distributed Training</span>
+  </div>
+
+  <h2>What is this?</h2>
+  <p>
+    Slay the Spire 2 is a roguelike deck-building game where you build a deck of cards
+    and fight through a series of increasingly difficult enemies. This project trains a
+    neural network to play the combat portion of the game using reinforcement learning.
+  </p>
+  <p>
+    The agent sees the same information a human player does — cards in hand, enemy HP
+    and intent, active buffs/debuffs, relics — and decides which card to play or
+    whether to end its turn. It learns entirely through self-play, starting from
+    random actions and gradually improving through PPO (Proximal Policy Optimization).
+  </p>
+
+  <h2>How it works</h2>
+  <ul>
+    <li><strong>C# Harmony mod</strong> hooks into the game, serializes combat state as JSON, and sends it over TCP</li>
+    <li><strong>Python actor proxy</strong> receives states, runs inference with the policy network, and returns actions</li>
+    <li><strong>Learner</strong> collects completed episodes from actors and trains the policy with PPO</li>
+    <li><strong>Distributed workers</strong> run headless game instances across multiple machines over LAN</li>
+    <li><strong>Curriculum</strong> stages the training from simple fights with starter decks to elite enemies with full card pools</li>
+  </ul>
+
+  <h2>Architecture</h2>
+  <p>
+    The system runs across multiple machines. Each worker laptop runs several headless
+    game instances connected to a local actor proxy. The actor proxies communicate with
+    a central learner that collects rollouts and trains the shared policy.
+  </p>
+
+  <h2>Training Curriculum</h2>
+  <p>
+    Training follows a 13-stage curriculum that gradually increases difficulty:
+  </p>
+  <ul>
+    <li><strong>Stages 0-2:</strong> Starter deck + basic damage/debuff cards vs single weak enemies</li>
+    <li><strong>Stages 3-5:</strong> Expanded card pool (poison, shiv, draw) vs multi-enemy encounters</li>
+    <li><strong>Stages 6-7:</strong> Full non-power card pool, all normal enemies</li>
+    <li><strong>Stages 8-12:</strong> Powers and combo cards added, elite enemies introduced</li>
+  </ul>
+
+  <h2>Current Results</h2>
+  <p>
+    The agent is currently training on Stage 12 (the final stage) with the full Silent
+    card pool against Act 1 elite enemies. Check the blog tabs for detailed write-ups
+    on specific challenges and technical deep dives.
+  </p>
+
+  <h2>Tech Stack</h2>
+  <div class="tag-row">
+    <span class="tag">Python 3.12</span>
+    <span class="tag">PyTorch</span>
+    <span class="tag">PPO</span>
+    <span class="tag">C# / .NET 9</span>
+    <span class="tag">Harmony</span>
+    <span class="tag">Godot Engine</span>
+    <span class="tag">TCP Sockets</span>
+    <span class="tag">Chart.js</span>
+    <span class="tag">GitHub Actions</span>
+  </div>
+</Base>

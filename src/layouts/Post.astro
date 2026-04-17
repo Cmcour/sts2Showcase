@@ -1,0 +1,21 @@
+---
+import Base from './Base.astro';
+
+interface Props {
+  title: string;
+  date: string;
+  activeTab: string;
+}
+const { title, date, activeTab } = Astro.props;
+const base = import.meta.env.BASE_URL;
+const backHref = activeTab === 'learned' ? `${base}learned/` : `${base}deep-dive/`;
+const backLabel = activeTab === 'learned' ? 'What I Learned' : 'Deep Dives';
+---
+<Base title={title} activeTab={activeTab}>
+  <a class="back-link" href={backHref}>&larr; {backLabel}</a>
+  <article>
+    <h1>{title}</h1>
+    <p class="post-date">{date}</p>
+    <slot />
+  </article>
+</Base>

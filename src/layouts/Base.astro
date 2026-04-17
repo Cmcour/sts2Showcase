@@ -1,0 +1,36 @@
+---
+interface Props {
+  title: string;
+  activeTab?: string;
+}
+const { title, activeTab } = Astro.props;
+const base = import.meta.env.BASE_URL;
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{title} — STS2 RL Showcase</title>
+  <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
+</head>
+<body>
+  <nav>
+    <div class="nav-inner">
+      <a class="nav-brand" href={base}>STS2 RL</a>
+      <ul class="nav-links">
+        <li><a href={base} class={activeTab === 'about' ? 'active' : ''}>About</a></li>
+        <li><a href={`${base}learned/`} class={activeTab === 'learned' ? 'active' : ''}>What I Learned</a></li>
+        <li><a href={`${base}deep-dive/`} class={activeTab === 'deep-dive' ? 'active' : ''}>Deep Dives</a></li>
+      </ul>
+    </div>
+  </nav>
+  <main>
+    <slot />
+  </main>
+</body>
+</html>
+
+<style is:global>
+  @import '../styles/global.css';
+</style>
