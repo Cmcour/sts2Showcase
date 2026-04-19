@@ -254,11 +254,11 @@ const status = !w.connected
           On the actor side, stamp the episode with its completion time
           when pushing to the learner:
         </p>
-<pre><code>ep_dict = {
+<pre><code>{`ep_dict = {
     "transitions": raw_transitions,
     "summary": summary,
     "completed_at": time.time(),  # added
-}</code></pre>
+}`}</code></pre>
         <p>
           On the learner side, use that timestamp for the CPM window
           instead of receipt time, falling back to receipt time if the
