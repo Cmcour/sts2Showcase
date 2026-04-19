@@ -1,0 +1,397 @@
+---
+import Post from '../../layouts/Post.astro';
+const base = import.meta.env.BASE_URL;
+
+const headings = [
+  { text: 'The shape of it',   id: 'shape-of-it' },
+  { text: 'Embeddings',        id: 'embeddings' },
+  { text: 'Trunk',             id: 'trunk' },
+  { text: 'Policy head',       id: 'policy-head' },
+  { text: 'Value head',        id: 'value-head' },
+  { text: 'Takeaways',         id: 'takeaways' },
+];
+---
+<Post
+  title="The Neural Network: Five Embeddings, One Trunk, Three Heads"
+  date="2026-04-19"
+  activeTab="deep-dive"
+  headings={headings}
+>
+  <p class="deck">
+    A ~234K-parameter policy + value network that learns to play Slay the
+    Spire 2 — told in one flow diagram and three cards.
+  </p>
+
+  {/* Hero: inline SVG, standalone, no external refs */}
+  <svg class="nn-flow" viewBox="0 0 700 340" xmlns="http://www.w3.org/2000/svg" role="img"
+       aria-label="Network flow: five embedding tables and a scalars block on the left fan into a two-layer MLP trunk, which fans out to a policy head (61 actions), a value head (scalar), and a dashed discard head (10).">
+    <g class="nn-flow-svg">
+      <text class="nn-section-label" x="20" y="16">INPUTS</text>
+      <text class="nn-section-label" x="300" y="16">TRUNK</text>
+      <text class="nn-section-label" x="540" y="16">HEADS</text>
+
+      <rect class="nn-emb" x="20" y="30"  width="170" height="32" rx="14" ry="14"/>
+      <text class="nn-label" x="30" y="50">card_emb</text>
+      <text class="nn-dim"    x="170" y="50" text-anchor="end">16d</text>
+      <text class="nn-label-dim" x="30" y="60">nn.Embedding(64, 16)</text>
+
+      <rect class="nn-emb" x="20" y="72"  width="170" height="32" rx="14" ry="14"/>
+      <text class="nn-label" x="30" y="92">enemy_emb</text>
+      <text class="nn-dim"    x="170" y="92" text-anchor="end">16d</text>
+      <text class="nn-label-dim" x="30" y="102">nn.Embedding(32, 16)</text>
+
+      <rect class="nn-emb" x="20" y="114" width="170" height="32" rx="14" ry="14"/>
+      <text class="nn-label" x="30" y="134">relic_emb</text>
+      <text class="nn-dim"    x="170" y="134" text-anchor="end">8d</text>
+      <text class="nn-label-dim" x="30" y="144">nn.Embedding(128, 8)</text>
+
+      <rect class="nn-emb" x="20" y="156" width="170" height="32" rx="14" ry="14"/>
+      <text class="nn-label" x="30" y="176">pile_emb</text>
+      <text class="nn-dim"    x="170" y="176" text-anchor="end">8d</text>
+      <text class="nn-label-dim" x="30" y="186">nn.Embedding(64, 8)</text>
+
+      <rect class="nn-emb" x="20" y="198" width="170" height="32" rx="14" ry="14"/>
+      <text class="nn-label" x="30" y="218">power_emb</text>
+      <text class="nn-dim"    x="170" y="218" text-anchor="end">8d</text>
+      <text class="nn-label-dim" x="30" y="228">nn.Embedding(64, 8)</text>
+
+      <rect class="nn-scalar" x="20" y="240" width="170" height="32"/>
+      <text class="nn-label" x="30" y="260">scalars</text>
+      <text class="nn-dim"    x="170" y="260" text-anchor="end">18d</text>
+      <text class="nn-label-dim" x="30" y="270">HP, block, energy, turn, debuffs</text>
+
+      <path class="nn-arrow" d="M 190 46  C 220 46, 235 100, 258 148"/>
+      <path class="nn-arrow" d="M 190 88  C 220 88, 235 120, 258 148"/>
+      <path class="nn-arrow" d="M 190 130 L 258 148"/>
+      <path class="nn-arrow" d="M 190 172 L 258 148"/>
+      <path class="nn-arrow" d="M 190 214 C 220 214, 235 180, 258 150"/>
+      <path class="nn-arrow" d="M 190 256 C 225 256, 238 200, 258 151"/>
+
+      <text class="nn-dim" x="254" y="140" text-anchor="end">concat → 583</text>
+
+      <path class="nn-arrow" d="M 260 150 L 298 150"/>
+      <polygon class="nn-arrow-head" points="298,146 305,150 298,154"/>
+
+      <rect class="nn-layer" x="300" y="112" width="140" height="38" rx="3"/>
+      <text class="nn-label" x="370" y="130" text-anchor="middle">Linear · LayerNorm · ReLU</text>
+      <text class="nn-dim"    x="370" y="144" text-anchor="middle">256</text>
+
+      <rect class="nn-layer" x="300" y="160" width="140" height="38" rx="3"/>
+      <text class="nn-label" x="370" y="178" text-anchor="middle">Linear · LayerNorm · ReLU</text>
+      <text class="nn-dim"    x="370" y="192" text-anchor="middle">256</text>
+
+      <path class="nn-arrow" d="M 370 150 L 370 160"/>
+
+      <path class="nn-arrow" d="M 440 172  C 480 172, 500 100, 536 70"/>
+      <polygon class="nn-arrow-head" points="536,66 543,70 536,74"/>
+
+      <path class="nn-arrow" d="M 440 180  C 480 180, 500 180, 536 180"/>
+      <polygon class="nn-arrow-head" points="536,176 543,180 536,184"/>
+
+      <path class="nn-arrow-dashed" d="M 440 188  C 480 188, 500 235, 536 255"/>
+      <polygon class="nn-arrow-head" points="536,251 543,255 536,259" opacity="0.6"/>
+
+      <text class="nn-dim" x="495" y="118" text-anchor="middle">256</text>
+      <text class="nn-dim" x="495" y="174" text-anchor="middle">256</text>
+      <text class="nn-label-dim" x="495" y="224" text-anchor="middle">256 · aux</text>
+
+      <polygon class="nn-policy" points="600,42 660,70 600,98 540,70"/>
+      <text class="nn-label" x="600" y="66" text-anchor="middle">policy head</text>
+      <text class="nn-dim"    x="600" y="80" text-anchor="middle">61 actions</text>
+      <text class="nn-label-dim" x="600" y="112" text-anchor="middle">masked softmax · Linear(256, 61)</text>
+
+      <circle class="nn-value" cx="600" cy="180" r="30"/>
+      <text class="nn-label" x="600" y="178" text-anchor="middle">value</text>
+      <text class="nn-dim"    x="600" y="192" text-anchor="middle">V(s)</text>
+      <text class="nn-label-dim" x="600" y="224" text-anchor="middle">scalar · Linear(256, 1)</text>
+
+      <rect class="nn-discard" x="545" y="244" width="110" height="28" rx="3"/>
+      <text class="nn-label nn-discard-lbl" x="600" y="258" text-anchor="middle">discard head</text>
+      <text class="nn-label-dim" x="600" y="270" text-anchor="middle">aux · 10 · Linear(256, 10)</text>
+
+      <line class="nn-legend-rule" x1="20" y1="300" x2="680" y2="300"/>
+      <text class="nn-label-dim" x="20"  y="318">PILL = nn.Embedding table</text>
+      <text class="nn-label-dim" x="180" y="318">RECT = Linear + LayerNorm + ReLU</text>
+      <text class="nn-label-dim" x="400" y="318">DIAMOND = policy head (masked)</text>
+      <text class="nn-label-dim" x="560" y="318">CIRCLE = value head</text>
+      <text class="nn-label-dim" x="20"  y="332">DASHED = auxiliary head (discard)</text>
+    </g>
+  </svg>
+
+  <p class="orienting" id="shape-of-it">
+    One shared trunk, five embedding tables, two (really three) heads. The
+    trunk is smaller than the input — almost all of the representation
+    work happens in the embeddings.
+  </p>
+
+  <div class="result-chip">
+    <span class="num">~234K params</span>
+    <span class="lbl">· policy + value + discard · orthogonal init</span>
+  </div>
+
+  <h2>The shape of it</h2>
+  <p>
+    I kept waiting for this network to need to be bigger. It never did. Two
+    hidden layers of 256, five embedding tables, three linear heads, about
+    234K parameters total — the whole policy fits in a 2.3 MB
+    <code>.pth</code> file and the shared trunk is actually
+    <em>smaller</em> than the input that feeds it. For a while that felt
+    wrong. I'd read enough RL papers to expect a network with a
+    recognizable name and a lot more depth. Instead, the thing that worked
+    was an MLP small enough to fit on a napkin.
+  </p>
+  <p>
+    The shape earns its small size because the interesting work happens in
+    the embedding tables on the left side of the diagram, not in the
+    trunk. Each entity type in the game — cards, enemies, relics, pile
+    cards, generic powers — gets its own learned embedding. Five tables,
+    roughly 4K parameters worth of weights across them, and that's where
+    the network builds its picture of what each game object <em>is</em>.
+    The trunk's job is to mix the concatenated picture into something the
+    heads can decode. The heads themselves barely exist: 61 outputs for
+    the policy, one for the value, ten for a discard-priority helper.
+    Most of the architectural decisions in this file were about the
+    tables.
+  </p>
+  <p>
+    This article walks through those decisions in the order the diagram
+    reads — embeddings on the left, trunk in the middle, heads on the
+    right — and each section tries to answer one question: why is that
+    piece shaped the way it is?
+  </p>
+
+  <h2 id="embeddings">Embeddings</h2>
+  <p>
+    The previous version of this network used one-hot everything. Cards
+    were 80-dim one-hots, enemies were one-hots over a ~15-entity pool,
+    relics and powers were bitmaps. The input cleared 1500 dimensions,
+    and — more importantly — the network had no structural reason to
+    treat Strike and Strike+ as related.
+    <a href={`${base}learned/input-vector/`}>That article</a> covers why
+    one-hot was wrong and how I found out. This one picks up where it
+    left off: five <code>nn.Embedding</code> tables, and the reasoning
+    that sized each of them.
+  </p>
+  <pre><code>{`self.card_emb  = nn.Embedding(card_vocab_size,  16, padding_idx=0)
+self.pile_emb  = nn.Embedding(card_vocab_size,  8,  padding_idx=0)
+self.enemy_emb = nn.Embedding(enemy_vocab_size, 16, padding_idx=0)
+self.relic_emb = nn.Embedding(relic_vocab_size, 8,  padding_idx=0)
+self.power_emb = nn.Embedding(power_vocab_size, 8,  padding_idx=0)`}</code></pre>
+  <p>
+    Cards and enemies get 16-dim embeddings; relics, pile cards, and
+    player powers get 8. The split wasn't a theoretical calculation — it
+    was a budget question. At every step the agent takes, the most
+    decision-relevant entities are the cards in hand and the enemies on
+    screen. Playing a card <em>is</em> the action. Targeting an enemy
+    <em>is</em> the action. The gradient signal on <code>card_emb</code>
+    and <code>enemy_emb</code> is dense and immediate, and giving those
+    tables more dimensions gave the network more room to discover useful
+    structure. When I tried dropping them to 8, training took roughly
+    twice as long to reach the same win rate on stage 3. When I tried
+    bumping them to 32, training looked identical and the forward pass
+    cost more. 16 landed.
+  </p>
+  <p>
+    Relics and powers are different. They modify the game but aren't
+    chosen as actions — relics drop at the end of a combat, not
+    turn-by-turn. The gradient signal on <code>relic_emb</code> is sparse;
+    each relic updates a handful of times per episode, not per step. 8
+    dimensions turns out to be plenty to encode "what does this relic do"
+    once the network has trained for long enough. I tried 16 for relics
+    once and the table's weights converged to near-identical rows for
+    functionally similar relics — it was overparameterized for the amount
+    of data flowing through it.
+  </p>
+  <p>
+    <code>pile_emb</code> is the weird one. It uses the same vocab as
+    <code>card_emb</code> (every card in the game has one entry), but a
+    <em>separate</em> embedding table at 8 dimensions. Pile cards aren't
+    played directly; they're context. "Roughly what's in my draw pile" is
+    useful; "this exact slot of the draw pile is Strike+" is not, because
+    the pile is shuffled. A separate smaller table gave the network a
+    distinct representation for cards-as-context versus cards-as-actions,
+    and let the two representations evolve independently. If I'd shared
+    one 16-dim table, the gradient on playing a card and the gradient on
+    pooling-over-pile would have fought each other.
+  </p>
+  <p>
+    The <code>padding_idx=0</code> argument on each table is the detail
+    that made masking almost free. Every table's zero-th slot is pinned
+    to a zero vector, never gradient-updated. Empty hand slots, empty
+    enemy slots, pile entries past the observed count — all of them map
+    to index 0, produce a zero vector, and contribute nothing to the
+    downstream concat. The network learns to read "all zeros" as "nothing
+    is here" without me writing a masking branch into the trunk.
+  </p>
+  <p>
+    Unordered collections go through mean-pooling before they hit the
+    trunk. The draw pile, discard pile, and exhaust pile each mean-pool
+    their card embeddings to 8 dims. Relics mean-pool across all equipped
+    relics. Player powers mean-pool across active powers. Mean-pooling
+    isn't the most expressive operator — attention would let the trunk
+    weight pile cards by relevance — but it matches what the game
+    actually exposes: unordered sets with no positional meaning. Encoding
+    "slot 0 of the draw pile" as a specific representation would be
+    baking in a lie, because slot 0 is wherever the shuffle put the next
+    card.
+  </p>
+  <div class="result-chip">
+    <span class="num">5 tables</span>
+    <span class="lbl">· ~4K embedding params total · learned end-to-end</span>
+  </div>
+
+  <h2 id="trunk">Trunk</h2>
+  <pre><code>{`self.trunk = nn.Sequential(
+    nn.Linear(input_dim, 256),
+    nn.LayerNorm(256),
+    nn.ReLU(),
+    nn.Linear(256, 256),
+    nn.LayerNorm(256),
+    nn.ReLU(),
+)`}</code></pre>
+  <p>Two layers of 256. Linear, LayerNorm, ReLU. Nothing else.</p>
+  <p>
+    I want to be honest about how little of this network's design is in
+    the trunk. Two of my iterations touched it — once to try three
+    layers instead of two, once to try a 512-dim hidden size — and both
+    either trained no better or trained slightly worse while doubling
+    compute. I kept 256 and moved on. The trunk is <em>smaller</em>
+    than the 583-dim input that flows into it, which reliably surprises
+    people when they see the diagram; the intuition is that the first
+    hidden layer should be at least as wide as the input. But the input
+    isn't dense information. It's a concatenation of learned embeddings
+    plus a handful of scalar features, and 256 dimensions is enough to
+    hold a useful mixing of those.
+  </p>
+  <p>
+    LayerNorm instead of BatchNorm is a deliberate call specific to this
+    project's actor-learner setup. The actor proxies run the network one
+    state at a time to produce actions during rollout, which means
+    inference happens with batch size 1. BatchNorm's running statistics
+    would drift between the batched training pass on the learner and the
+    single-sample inference on the actor — the network would train on
+    one normalization and deploy under another. LayerNorm normalizes
+    each sample independently and doesn't care whether the batch is 1 or
+    1024, so the actor and learner see identical forward passes.
+  </p>
+  <p>
+    Orthogonal initialization
+    (<code>nn.init.orthogonal_(m.weight, gain=sqrt(2))</code>) is applied
+    to every <code>nn.Linear</code>. Orthogonal init is a PPO convention
+    — the theory is that it preserves gradient magnitudes better than
+    Xavier/He for the ReLU stack, and in practice training curves
+    noticeably differ. The policy head gets a much smaller gain
+    (<code>0.01</code>) so the initial action distribution is
+    near-uniform instead of peaked at some arbitrary action. Without
+    that override, the first few hundred episodes punish the agent for
+    preferences the init baked in, which is both a waste of rollouts
+    and a source of confusing early-training regressions.
+  </p>
+
+  <h2 id="policy-head">Policy head + masked softmax</h2>
+  <pre><code>{`logits = self.policy_head(h)                         # [B, 61]
+logits = logits.masked_fill(~enc.action_mask, -1e9)  # illegal → -∞`}</code></pre>
+  <p>
+    The action space is <code>end_turn</code> plus
+    <code>play(card_idx, target_idx)</code> for 10 hand slots × 6 possible
+    targets, for 61 actions total. The policy head is one
+    <code>nn.Linear(256, 61)</code>, and the network produces a
+    categorical distribution over all 61 slots — then masks away the
+    illegal ones before sampling.
+  </p>
+  <p>
+    Most states have nowhere near 61 legal actions. A typical mid-turn
+    state has three to seven cards in hand, each legal against one to
+    three enemies, plus <code>end_turn</code> as a baseline. Everything
+    else is illegal — the slot has no card, the card costs too much
+    energy, the card targets an enemy type that doesn't match. The
+    encoder walks the game's legal-action list and builds a Boolean mask
+    of length 61; the forward pass applies
+    <code>masked_fill(~mask, -1e9)</code> to the logits before they hit
+    <code>softmax</code>.
+  </p>
+  <div class="callout caveat">
+    <div class="callout-label">Caveat · -1e9 vs float('-inf')</div>
+    <p>
+      <code>-1e9</code> is not <code>float('-inf')</code>, and I learned
+      the distinction the hard way around training episode 400 the second
+      time I ran training. <code>float('-inf')</code> works at forward
+      time — the softmax assigns zero probability to illegal actions,
+      perfect. It breaks at backward time: any two legal actions with
+      identical logits produce a <code>logsumexp</code> that differences
+      two <code>-inf</code>s and yields NaN gradients. <code>-1e9</code>
+      is finite, survives the backward pass, and gives about 1e-9
+      probability to illegal actions after softmax — effectively zero
+      for sampling purposes, with a comfortable numerical margin.
+    </p>
+  </div>
+  <p>
+    The masked logits are also what the PPO surrogate loss differentiates
+    through. <code>log_softmax(logits)</code> with the mask applied
+    zeroes out the contributions of illegal actions, which is the
+    correct treatment — a policy update shouldn't reward or penalize
+    actions that couldn't have been taken.
+  </p>
+  <p>
+    I considered a variable-length action head — some kind of pointer
+    network or masked attention over the current legal-action list — and
+    decided against it. At 61 actions the fixed-width linear is 16K
+    parameters, the masking is three lines, and the rest of the PPO
+    pipeline doesn't need to special-case anything. If the action space
+    grew by an order of magnitude, or if legal-action sets had internal
+    structure a pointer network could exploit, I'd reconsider. At this
+    scale the simple version wins.
+  </p>
+
+  <h2 id="value-head">Value head</h2>
+  <pre><code>{`value = self.value_head(h)  # [B, 1]`}</code></pre>
+  <p>One linear, 256 to 1, 257 parameters including bias. That's the whole head.</p>
+  <p>
+    PPO's advantage computation needs a value estimate to subtract as a
+    baseline — the advantage is <code>return - V(state)</code>, and the
+    policy update scales by advantage. The value estimate doesn't have
+    to be accurate in absolute terms; it has to correlate with return
+    well enough that the baseline reduces variance in the policy
+    gradient. One linear layer on top of the 256-d trunk is enough for
+    that, and the value loss trains against the discounted return with
+    standard MSE. Both the policy loss and the value loss gradient back
+    through the shared trunk, which is the main reason the trunk learns
+    useful features — the value signal is denser per step than the
+    policy signal and keeps the representation well-calibrated.
+  </p>
+  <p>
+    The discard head is an architectural footnote:
+    <code>self.discard_head = nn.Linear(256, 10)</code>, producing ten
+    scores per hand slot sorted descending to give the agent a "discard
+    this first" priority list. It fires only when STS2 forces a
+    mid-turn discard. I considered folding the decision into the main
+    policy head, but "pick one action out of 61" and "rank ten slots"
+    are different shapes; giving each its own head kept each loss
+    attributed to one decision shape, and kept the gradients specific
+    to that shape.
+  </p>
+
+  <h2 id="takeaways">Takeaways</h2>
+  <div class="takeaways-grid">
+    <div class="tg-tile">
+      <span class="tg-n">01</span>
+      <span class="tg-lbl"><strong>Embeddings are the representation work.</strong> The trunk mixes; the heads decode.</span>
+    </div>
+    <div class="tg-tile">
+      <span class="tg-n">02</span>
+      <span class="tg-lbl"><strong>Separate <code>pile_emb</code> from <code>card_emb</code>.</strong> Cards-as-actions and cards-as-context are different jobs.</span>
+    </div>
+    <div class="tg-tile">
+      <span class="tg-n">03</span>
+      <span class="tg-lbl"><strong>LayerNorm over BatchNorm for actor-learner RL.</strong> Inference is batch-of-1; BatchNorm drifts.</span>
+    </div>
+    <div class="tg-tile">
+      <span class="tg-n">04</span>
+      <span class="tg-lbl"><strong><code>masked_fill(~mask, -1e9)</code> before softmax.</strong> The finite margin survives the backward pass without NaN.</span>
+    </div>
+    <div class="tg-tile">
+      <span class="tg-n">05</span>
+      <span class="tg-lbl"><strong>Orthogonal init with <code>gain=0.01</code> on the policy head.</strong> Starts near-uniform, not peaked on an arbitrary action.</span>
+    </div>
+  </div>
+</Post>

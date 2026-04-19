@@ -1,38 +1,365 @@
 ---
 import Post from '../../layouts/Post.astro';
+
+const headings = [
+  { text: 'What I did first',              id: 'what-i-did-first' },
+  { text: 'What went wrong',               id: 'what-went-wrong' },
+  { text: 'The curriculum design',         id: 'the-curriculum-design' },
+  { text: 'Stage 00 · Starter deck',       id: 'stage-00' },
+  { text: 'Stage 01 · +Damage/Block',      id: 'stage-01' },
+  { text: 'Stage 02 · +Debuff',            id: 'stage-02' },
+  { text: 'Stage 03 · +Draw · multi',      id: 'stage-03' },
+  { text: 'Stage 04 · +Poison',            id: 'stage-04' },
+  { text: 'Stage 05 · +Shiv',              id: 'stage-05' },
+  { text: 'Stage 06 · Full non-power',     id: 'stage-06' },
+  { text: 'Stage 07 · Settle',             id: 'stage-07' },
+  { text: 'Stage 08 · +Elites',            id: 'stage-08' },
+  { text: 'Stage 09 · +Powers',            id: 'stage-09' },
+  { text: 'Stage 10 · +Combo · full',      id: 'stage-10' },
+  { text: 'Stage 11 · Settle',             id: 'stage-11' },
+  { text: 'Stage 12 · Final',              id: 'stage-12' },
+  { text: 'Automatic stage advancement',   id: 'auto-advance' },
+  { text: 'What I\u2019d do first next time', id: 'next-time' },
+  { text: 'Technical details',             id: 'technical-details' },
+  { text: 'Key takeaways',                 id: 'key-takeaways' },
+];
 ---
-<Post title="Why Curriculum Learning Was Essential" date="April 2026" activeTab="learned">
-  <p>
-    When I first started training, I threw the agent into the full game — all cards,
-    all enemies, random decks. It learned nothing useful after thousands of episodes.
+<Post
+  title="Curriculum Learning: You Can&rsquo;t Skip the Basics"
+  date="2026-04-18"
+  activeTab="learned"
+  readingTime="7 min read"
+  headings={headings}
+>
+  <p class="deck">
+    I spent weeks trying to train an agent on the full game before giving up
+    and building a curriculum. The curriculum version reached higher
+    performance on the full game in days than my direct approach reached in
+    weeks.
   </p>
 
-  <h2>The Problem</h2>
+  <div class="diptych-wrap">
+    <div class="diptych">
+      <div class="dpanel bad">
+        <div class="d-label">Before &middot; full-game</div>
+        <h3>Random decks, random enemies, all mechanics.</h3>
+        <ul>
+          <li>Full ~80-card pool + all Act&nbsp;1 enemies in rotation</li>
+          <li>Powers, debuffs, upgrades, relics all on</li>
+          <li>Two weeks with no measurable progress</li>
+        </ul>
+        <div class="d-stat">
+          <span class="d-num">~15%</span>
+          <span class="d-ntext">Full-game win rate<br />&mdash; shallow, near-random</span>
+        </div>
+      </div>
+
+      <div class="dpanel good">
+        <div class="d-label">After &middot; curriculum</div>
+        <h3>Starter deck + one enemy. Add one concept at a time.</h3>
+        <ul>
+          <li>Stage&nbsp;0: starter deck only vs one weak enemy</li>
+          <li>Each stage adds <em>one</em> new idea, not five</li>
+          <li>Auto-advance on win-rate plateau</li>
+        </ul>
+        <div class="d-stat">
+          <span class="d-num">80%+</span>
+          <span class="d-ntext">Stage&nbsp;0 in ~500 ep.<br />&mdash; foundation transfers up</span>
+        </div>
+      </div>
+    </div>
+    <div class="diptych-arrow" aria-hidden="true">&rarr;</div>
+  </div>
+
   <p>
-    With 80+ possible cards in the deck and 30+ different enemies, the state space
-    was enormous. The agent couldn't even learn that "playing Strike deals damage"
-    because it was drowning in complexity. Random decks meant it rarely saw the same
-    card twice, so it couldn't build associations.
+    Two weeks of full-game training got me nowhere. The curriculum version of
+    the same run reached higher performance in days than the direct approach
+    reached in weeks. This is the write-up of what I did, what broke, and the
+    13-stage ladder that replaced it.
   </p>
 
-  <h2>Staged Curriculum</h2>
-  <p>
-    I broke training into 13 stages. Stage 0 uses only the starter deck (Strikes,
-    Defends, Neutralize, Survivor) against a single weak enemy. The agent can focus
-    on learning the basics: play attacks to deal damage, play defense to block.
-  </p>
-  <p>
-    Each subsequent stage adds a few more cards or a new enemy type. By the time the
-    agent reaches Stage 12 with the full card pool and elite enemies, it already has
-    a solid foundation of card game fundamentals.
+  <div class="section-kicker">What I did first</div>
+  <section id="what-i-did-first" class="narr-card">
+    <h2>Full-game training from day one</h2>
+    <p>
+      Random deck construction from the full Silent card pool &mdash; roughly
+      80 cards. Random enemy selection across the full Act&nbsp;1 roster
+      defined in <code>stages.py</code> &mdash; 21 normal encounters (single
+      and multi) plus 6 elites, so around 27 distinct fights. Full mechanical
+      complexity: powers, debuffs, upgraded cards, relic interactions.
+      Everything on, all the time.
+    </p>
+    <p>
+      The theory was that if the agent experiences the full distribution, it
+      will learn a policy that generalizes. Curriculum learning, in that frame,
+      is training wheels &mdash; it narrows the distribution, which has to
+      limit final performance.
+    </p>
+    <p>
+      That was wrong. The result was that the agent learned nothing useful at
+      all.
+    </p>
+    <div class="result-chip bad"><span class="num">~15%</span><span class="lbl">full-game win rate &middot; stalled</span></div>
+  </section>
+
+  <div class="section-kicker">What went wrong</div>
+  <section id="what-went-wrong" class="narr-card">
+    <h2>The agent learned nothing useful after thousands of episodes.</h2>
+    <p>
+      The state space was too large for the signal to reach. Four specific
+      failure modes, which I will list in the order I noticed them:
+    </p>
+    <ol>
+      <li>
+        <strong>Rare card exposure.</strong> Eighty cards in the pool, ten
+        cards in a deck. The agent saw most cards a handful of times per
+        hundred episodes. &ldquo;Play Strike, enemy HP drops, good&rdquo; is a
+        simple lesson, but you need to see Strike hundreds of times to learn
+        it reliably. At a handful of exposures per hundred episodes, the
+        signal could not stabilize.
+      </li>
+      <li>
+        <strong>Enemy diversity without foundation.</strong> Fossil Stalker,
+        Punch Construct, Sewer Clam, Vine Shambler, the Byrdonis and Phrog
+        Parasite elites &mdash; each has distinct attack patterns, intents,
+        and optimal responses. With random matchups, the agent couldn&rsquo;t
+        specialize enough to learn any single enemy well. It certainly
+        couldn&rsquo;t learn when to switch strategies.
+      </li>
+      <li>
+        <strong>Win rate plateaued at ~15%.</strong> Better than random, but
+        only because the agent had picked up the most shallow lesson
+        available: play attacks when enemies have low HP, play defense on
+        high-damage turns. That is essentially the policy a five-minute-old
+        human gets to. It was not going to get deeper without more signal.
+      </li>
+      <li>
+        <strong>Training signal was too noisy.</strong> Every episode was a
+        completely different combat. The variance in reward per episode was
+        huge, so gradient updates pointed in wildly different directions.
+        PPO&rsquo;s trust region &mdash; the per-update cap on how far the
+        policy can shift &mdash; kept the policy changes small, but not small
+        enough to prevent drift around a noisy mean.
+      </li>
+    </ol>
+    <p>
+      After about two weeks of this with no measurable progress, I pivoted.
+    </p>
+  </section>
+
+  <p class="pullquote">
+    <strong>Stage&nbsp;0 &mdash; starter deck, one enemy &mdash; got the
+    agent above 80% in roughly 500 episodes.</strong> Two weeks of
+    full-game training before that got me nowhere. The curriculum
+    wasn&rsquo;t a training wheel for this project; it was the only
+    shape of task the signal could reach through.
   </p>
 
-  <h2>Automatic Stage Advancement</h2>
+  <div class="section-kicker">The curriculum design</div>
+  <section id="the-curriculum-design" class="narr-card">
+    <h2>I broke training into 13 stages, gradually introducing complexity.</h2>
+    <p>
+      Stage&nbsp;0 is almost trivial &mdash; 4 unique cards, one enemy type,
+      single-digit HP difference per turn. The agent could figure out the
+      basics fast: <strong>80%+ win rate in maybe 500 episodes</strong>.
+    </p>
+    <p>
+      By Stage&nbsp;5, the agent had a solid foundation of card-game
+      fundamentals: block when the enemy is about to hit hard, prioritize
+      killing weak enemies first, upgrade cards for efficiency. Each
+      subsequent stage added a few new concepts, not an entirely new game.
+    </p>
+
+    <div id="stage-00" class="stage-detail">
+      <div class="num">00</div>
+      <div>
+        <h3>Starter deck &middot; single normal enemy</h3>
+        <p class="desc">Fixed 12-card starter (Strike, Defend, Neutralize, Survivor) against one Act&nbsp;1 single-normal enemy from <code>ENEMY_NORMAL_SINGLE</code> &mdash; Fossil Stalker, Punch Construct, Sewer Clam, etc. No upgrades.</p>
+      </div>
+    </div>
+
+    <div id="stage-01" class="stage-detail">
+      <div class="num">01</div>
+      <div>
+        <h3>+BUCKET_A (damage &amp; block)</h3>
+        <p class="desc">Adds the six basic damage/block cards (Slice, Deflect, Dagger Spray, Backstab, Dash, Skewer). Deck size widens to 15&ndash;20, upgrade chance turns on at 10%. Enemy pool unchanged.</p>
+      </div>
+    </div>
+
+    <div id="stage-02" class="stage-detail">
+      <div class="num">02</div>
+      <div>
+        <h3>+BUCKET_D (debuff)</h3>
+        <p class="desc">Adds the ten debuff cards (Neutralize, Piercing Wail, Sucker Punch, Expose, Leg Sweep, Strangle, Assassinate, Malaise, Blade of Ink, Suppress). Debuffs and status effects enter play. Enemy pool unchanged.</p>
+      </div>
+    </div>
+
+    <div id="stage-03" class="stage-detail">
+      <div class="num">03</div>
+      <div>
+        <h3>+BUCKET_E (draw/cycle) &middot; multi-enemy encounters unlock</h3>
+        <p class="desc">Adds the six draw/cycle cards (Backflip, Acrobatics, Expertise, Hidden Daggers, Predator, Adrenaline). Enemy pool expands to <code>_ENEMIES_NM</code> &mdash; normal-single plus normal-multi.</p>
+      </div>
+    </div>
+
+    <div id="stage-04" class="stage-detail">
+      <div class="num">04</div>
+      <div>
+        <h3>+BUCKET_B (poison)</h3>
+        <p class="desc">Adds the five poison cards (Deadly Poison, Poisoned Stab, Snakebite, Bouncing Flask, Bubble Bubble). Poison as alternative damage. Enemy pool unchanged.</p>
+      </div>
+    </div>
+
+    <div id="stage-05" class="stage-detail">
+      <div class="num">05</div>
+      <div>
+        <h3>+BUCKET_C (shiv)</h3>
+        <p class="desc">Adds the seven shiv cards (Blade Dance, Cloak and Dagger, Leading Strike, Accuracy, Up My Sleeve, Storm of Steel, Knife Trap). Enemy pool unchanged.</p>
+      </div>
+    </div>
+
+    <div id="stage-06" class="stage-detail">
+      <div class="num">06</div>
+      <div>
+        <h3>+BUCKET_F (sly/discard) &rarr; full non-power pool</h3>
+        <p class="desc">Adds the last non-power bucket (Survivor, Dagger Throw, Flick Flack, Prepared, Ricochet, Untouchable, Haze, Reflex, Tactician, Calculated Gamble), completing <code>_CARDS_AF</code>. Enemy pool unchanged.</p>
+      </div>
+    </div>
+
+    <div id="stage-07" class="stage-detail">
+      <div class="num">07</div>
+      <div>
+        <h3>Settle &middot; identical to stage 6</h3>
+        <p class="desc">No additions. <code>_STAGE_DEFS</code> pairs stage 7 with stage 6 so the plateau detector has more time to confirm the non-power pool is stable before elites show up.</p>
+      </div>
+    </div>
+
+    <div id="stage-08" class="stage-detail">
+      <div class="num">08</div>
+      <div>
+        <h3>+Elites (no card change)</h3>
+        <p class="desc">Card pool stays at <code>_CARDS_AF</code>; enemy pool swaps to <code>_ENEMIES_EL</code>, adding the six Act&nbsp;1 elites (Phantasmal Gardeners, Skulking Colony, Terror Eel, Bygone Effigy, Byrdonis, Phrog Parasite). First stage where elites appear.</p>
+      </div>
+    </div>
+
+    <div id="stage-09" class="stage-detail">
+      <div class="num">09</div>
+      <div>
+        <h3>+BUCKET_G1 + G2 (powers)</h3>
+        <p class="desc">The complete power addition &mdash; poison/shiv scaling powers and general scaling powers, both at once. Upgrade chance jumps 10% &rarr; 30% and <code>deck_size_max</code> goes from 22 to 25. Enemy pool unchanged.</p>
+      </div>
+    </div>
+
+    <div id="stage-10" class="stage-detail">
+      <div class="num">10</div>
+      <div>
+        <h3>+BUCKET_H (combo) &rarr; full card pool</h3>
+        <p class="desc">Adds the combo/conditional bucket, completing <code>_CARDS_ALL</code>. Enemy pool unchanged from stage 8.</p>
+      </div>
+    </div>
+
+    <div id="stage-11" class="stage-detail">
+      <div class="num">11</div>
+      <div>
+        <h3>Settle &middot; identical to stage 10</h3>
+        <p class="desc">No additions. Another settle/confirm stage on the full pool + elites.</p>
+      </div>
+    </div>
+
+    <div id="stage-12" class="stage-detail">
+      <div class="num">12</div>
+      <div>
+        <h3>Final &middot; identical to stages 10&ndash;11</h3>
+        <p class="desc">Labeled &ldquo;final&rdquo; by design; no new cards or enemies. The curriculum tops out here.</p>
+      </div>
+    </div>
+
+    <h3 id="auto-advance">Automatic stage advancement</h3>
+    <div class="callout">
+      <div class="callout-label">One important detail</div>
+      <p>
+        The learner advances on an <em>HP-based</em> plateau, not a
+        win-rate threshold. <code>learner.py::check_plateau</code> compares
+        two sliding windows of average HP remaining:
+        <code>PLATEAU_WINDOW = 100</code> updates per window, advance when
+        the delta between windows stays within
+        <code>PLATEAU_THRESHOLD = 0.5 HP</code> for
+        <code>PLATEAU_CONFIRM = 50</code> consecutive updates, and only if
+        recent average HP is already above the
+        <code>PLATEAU_MIN_HP = 25 HP</code> gate. No separate elite rule &mdash;
+        elite stages run the same detector.
+      </p>
+    </div>
+
+    <p>
+      Early stages blow through quickly &mdash; maybe an hour of training
+      each. Hard stages get as much time as they need. And I don&rsquo;t have
+      to manually decide when to advance, which is the productivity piece
+      that actually matters. Manual advancement steals momentum every time
+      you pause the run; automated advancement means I can leave training
+      overnight and come back to a model that&rsquo;s several stages further
+      along.
+    </p>
+
+    <p>
+      Stage config lives in <code>stage.json</code>, written by
+      <code>StageConfig.to_dict</code> in <code>stages.py</code>. Six keys:
+      <code>stage</code>, <code>deck_size_min</code>, <code>deck_size_max</code>,
+      <code>upgrade_chance</code>, <code>card_pool</code>, <code>enemy_pool</code>.
+      Deck construction is weighted random draws from the stage&rsquo;s
+      <code>card_pool</code> into a deck sized within
+      <code>[deck_size_min, deck_size_max]</code>, with each card upgraded
+      independently at <code>upgrade_chance</code>. Per <code>_STAGE_DEFS</code>
+      that chance is 0% at stage 0, 10% at stages 1&ndash;8, and 30% at
+      stages 9&ndash;12 &mdash; not a contiguous band. Rollback &mdash;
+      falling back to a prior stage if the agent regresses &mdash; I considered
+      and never implemented. It hasn&rsquo;t been needed.
+    </p>
+  </section>
+
+  <h2 id="next-time">What I&rsquo;d do first next time</h2>
   <p>
-    The learner monitors the agent's win rate over a rolling window. When it plateaus
-    above a threshold, it advances to the next stage. This means the agent spends
-    exactly as long as it needs on each difficulty level.
+    Start with the simplest possible version of the task. Before thinking
+    about reward shaping or network architecture, identify the minimum viable
+    game state: fewest cards, one enemy, no special mechanics. Train on that
+    until win rate is above 80%. Add one dimension of complexity at a
+    time &mdash; more cards, or more enemies, but not both at once. Only move
+    on when the current stage is mastered.
   </p>
 
-  <p><em>This is a placeholder post. Replace with your actual content.</em></p>
+  <p>
+    Auto-advancement is worth the engineering cost. Manual stage advancement
+    is a productivity killer &mdash; every pause kills momentum. The ~100
+    lines of plateau-detection code paid for themselves inside the first
+    weekend of overnight runs.
+  </p>
+
+  <p>
+    And don&rsquo;t trust the intuition that curriculum limits final
+    performance. I was worried that if I trained on Stage&nbsp;0 too long,
+    the agent would &ldquo;overfit&rdquo; to simple combat and fail to
+    generalize. That turned out to be almost entirely wrong. The fundamentals
+    transfer &mdash; an agent that learned to block on Stage&nbsp;0 keeps
+    blocking on Stage&nbsp;12.
+  </p>
+
+  <h2 id="technical-details">Technical details</h2>
+  <ul>
+    <li><strong>Stage config:</strong> <code>stage.json</code> &mdash; keys <code>stage</code>, <code>deck_size_min</code>, <code>deck_size_max</code>, <code>upgrade_chance</code>, <code>card_pool</code>, <code>enemy_pool</code> (see <code>stages.py::StageConfig.to_dict</code>)</li>
+    <li><strong>Deck construction:</strong> weighted random draws from the stage&rsquo;s <code>card_pool</code>; per-card upgrade chance <code>0%</code> at stage 0, <code>10%</code> at stages 1&ndash;8, <code>30%</code> at stages 9&ndash;12</li>
+    <li><strong>Advancement criteria:</strong> HP-based plateau detector (<code>learner.py::check_plateau</code>) on two sliding windows of average HP remaining</li>
+    <li><strong>Plateau params:</strong> <code>PLATEAU_WINDOW = 100</code> updates, <code>PLATEAU_CONFIRM = 50</code> consecutive, <code>PLATEAU_THRESHOLD = 0.5 HP</code> delta, <code>PLATEAU_MIN_HP = 25 HP</code> gate</li>
+    <li><strong>Rollback:</strong> considered but not implemented</li>
+  </ul>
+
+  <h2 id="key-takeaways">Key takeaways</h2>
+  <ol>
+    <li><strong>Curriculum isn&rsquo;t a training wheel, it&rsquo;s a necessity.</strong> For sufficiently complex tasks, you cannot bootstrap a useful policy from random initialization without one. The agent has to stand somewhere before it can climb.</li>
+    <li><strong>Minimum viable task first.</strong> Don&rsquo;t start with the full problem. Strip it down until a nearly-random policy can win sometimes. The whole curriculum rests on Stage&nbsp;0 being easy enough that random play produces some wins.</li>
+    <li><strong>Automate stage transitions.</strong> Manual advancement steals time and attention you could spend on bigger questions. Write the plateau detector early.</li>
+    <li><strong>Each new stage should add one concept, not five.</strong> The goal is that the agent&rsquo;s existing policy is still ~80% correct and it just has to learn the new piece. If you&rsquo;re adding five concepts, the agent is back to random on a smaller domain.</li>
+    <li><strong>Trust that fundamentals transfer.</strong> An agent that masters the easy version almost always generalizes up, not down. The Stage&nbsp;0 policy &mdash; block hard hits, kill weak enemies first &mdash; stays correct all the way through Stage&nbsp;12.</li>
+  </ol>
 </Post>
+
+<!-- _v5 Spine-with-Diptych-Hero — curriculum-learning article implementation, 2026-04-18_ -->

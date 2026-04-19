@@ -1,0 +1,296 @@
+---
+import Post from '../../layouts/Post.astro';
+const base = import.meta.env.BASE_URL;
+
+const headings = [
+  { text: 'At a glance',               id: 'at-a-glance' },
+  { text: 'The 30-second version',     id: 'thirty-second' },
+  { text: 'A turn in detail',          id: 'a-turn-in-detail' },
+  { text: 'Cards are the verbs',       id: 'cards-are-the-verbs' },
+  { text: 'Intent telegraphing',       id: 'intent-telegraphing' },
+  { text: 'Status effects',            id: 'status-effects' },
+  { text: 'Two views of the same combat', id: 'two-views' },
+  { text: 'Why this is interesting for RL', id: 'why-rl' },
+];
+---
+<Post
+  title="Slay the Spire 2 — What the Agent Is Actually Playing"
+  date="2026-04-19"
+  activeTab="deep-dive"
+  headings={headings}
+>
+  <p class="deck">
+    Before I can show you how the agent plays this game, I have to show you the
+    game. Here's the 5-minute version.
+  </p>
+
+  {/* Annotated screenshot hero — combat1.png with six amber tickmarks */}
+  <figure class="screenshot-hero" id="at-a-glance">
+    <div class="sh-img">
+      <img src={`${base}screenshots/combat1.png`} alt="A turn in Slay the Spire 2 — two enemies, a hand of cards, HP and energy indicators, an End Turn button." />
+      <div class="sh-annotation sh-a1"><span class="sh-dot"></span><span class="sh-label">Player HP · 55/55</span></div>
+      <div class="sh-annotation sh-a2"><span class="sh-dot"></span><span class="sh-label">Energy · 3 / turn</span></div>
+      <div class="sh-annotation sh-a3"><span class="sh-dot"></span><span class="sh-label">Enemies · 1–6</span></div>
+      <div class="sh-annotation sh-a4"><span class="sh-dot"></span><span class="sh-label">Intent · next action</span></div>
+      <div class="sh-annotation sh-a5"><span class="sh-dot"></span><span class="sh-label">Hand · 5 cards</span></div>
+      <div class="sh-annotation sh-a6"><span class="sh-dot"></span><span class="sh-label">End Turn</span></div>
+    </div>
+    <figcaption class="orienting">
+      A turn in Slay the Spire 2. Everything the RL agent cares about fits in this frame.
+    </figcaption>
+  </figure>
+
+  <h2 id="thirty-second">The 30-second version</h2>
+  <p>
+    Slay the Spire 2 is a deck-building roguelike. The player climbs a spire,
+    one combat at a time. Each combat is a turn-based card game: draw five,
+    spend energy, end turn, enemies resolve. Repeat until someone is dead.
+  </p>
+  <p>
+    Between combats, the player picks up new cards, rests at campfires, buys
+    relics in shops, and fights elites. Losing ends the run and resets to
+    floor 1 with a fresh deck. The spire runs three acts. Most runs end in
+    act 2.
+  </p>
+  <p>
+    That's the whole game in two paragraphs. The rest of this article is the
+    part that matters for an agent — the mechanics that make turn-by-turn
+    decisions interesting, and the structural properties that make the full
+    run hard to optimize.
+  </p>
+
+  <h2 id="a-turn-in-detail">A turn in detail</h2>
+  <p>A turn goes through the same five phases every time:</p>
+
+  <div class="stepper">
+    <div class="stepper-row">
+      <div class="stepper-key">Start turn</div>
+      <div class="stepper-val">
+        Energy resets to 3. Any start-of-turn powers trigger — Strength,
+        Ritual, Barricade, the long tail of passive effects that change how
+        the turn will play out.
+      </div>
+    </div>
+    <div class="stepper-row">
+      <div class="stepper-key">Draw 5</div>
+      <div class="stepper-val">
+        From the shuffled draw pile. If the pile empties mid-draw, the
+        discard pile shuffles back in.
+      </div>
+    </div>
+    <div class="stepper-row">
+      <div class="stepper-key">Play cards</div>
+      <div class="stepper-val">
+        This is the only phase where the agent acts. Each card in hand costs
+        some amount of energy; the agent pays, picks a target if the card
+        needs one, and the effect resolves. The agent can play zero cards or
+        play until it's out of energy or playable cards.
+      </div>
+    </div>
+    <div class="stepper-row">
+      <div class="stepper-key">End turn</div>
+      <div class="stepper-val">
+        Remaining cards in hand go to the discard pile. Unused energy does
+        not carry.
+      </div>
+    </div>
+    <div class="stepper-row">
+      <div class="stepper-key">Enemies resolve</div>
+      <div class="stepper-val">
+        Each enemy performs the action they telegraphed in their intent icon.
+        Damage, buffs, debuffs apply. If the player is at 0 HP, combat ends
+        and so does the run.
+      </div>
+    </div>
+  </div>
+
+  <p>
+    The agent takes its actions during <em>Play cards</em>. Everything else is
+    the environment's move. That one line is the cleanest framing I've found
+    for how this game maps to an RL episode.
+  </p>
+
+  <h2 id="cards-are-the-verbs">Cards are the verbs</h2>
+  <p>
+    Every card is exactly one of three types, and the type determines how the
+    card behaves in the larger system.
+  </p>
+  <p>
+    <strong>Attack cards</strong> deal damage. <code>Strike</code> deals 6
+    damage for 1 energy. Most attacks target a single enemy; some are
+    multi-target or "deal X to all enemies." Attacks are the only cards that
+    benefit from Strength (the player's damage-boost power) and the only
+    cards the enemy's Weak debuff reduces.
+  </p>
+  <p>
+    <strong>Skill cards</strong> are everything non-attack that resolves
+    immediately. <code>Defend</code> gains 5 block for 1 energy. Card draw,
+    targeted debuffs, self-heals, energy gain, enemy-pile manipulation — all
+    Skills. They don't scale with Strength and they're not Weakened by Weak.
+  </p>
+  <p>
+    <strong>Power cards</strong> are persistent effects that stay on for the
+    rest of the combat. <code>Inflame</code> adds 2 permanent Strength.
+    <code>Metallicize</code> grants 3 block at the end of every turn. Powers
+    leave the hand on play — they don't go to the discard pile, because
+    conceptually they're no longer a card. They've been played and now
+    they're part of the player.
+  </p>
+  <p>
+    The three-way split matters more than it looks. Attack vs Skill is a
+    relevance filter for a handful of per-turn modifiers. Power vs the other
+    two is a credit-assignment problem: a Power played on turn 1 pays off
+    for the next eight turns. An Attack played on turn 8 pays off on turn 8.
+  </p>
+
+  <h2 id="intent-telegraphing">Intent telegraphing</h2>
+  <div class="callout caveat">
+    <div class="callout-label">Caveat</div>
+    <p><em>Intent is the central partial-observation signal of this game.</em></p>
+  </div>
+  <p>
+    Every enemy in Slay the Spire 2 displays, above their sprite, an icon
+    showing what they will do on their next action. Sword icon: they will
+    attack for some amount. Shield: they will gain block. Curved-line icon:
+    they will buff themselves or debuff you. The icon includes the relevant
+    number — attack for 21, block for 8.
+  </p>
+  <p>
+    This is an unusual mechanic for a turn-based game. The player knows,
+    before committing the turn, what each enemy will do when their turn
+    comes. The uncertainty in the state is about <em>future</em> turns and
+    the order of the draw pile — not about the next enemy action, which is
+    public information.
+  </p>
+  <p>
+    For the agent, this shows up directly in the state vector.
+    <code>src/AutoSlayRestartMod/Rl/StateSerializer.cs</code> walks each
+    enemy's intent at combat time and serializes it as four category flags
+    (<code>attack</code>, <code>block</code>, <code>buff</code>,
+    <code>debuff</code>) plus the scalar number attached to the action. The
+    agent does not have to predict the next action; it reads it. The
+    interesting decisions are about which card to play against a known
+    threat, not guessing which threat is coming.
+  </p>
+
+  <h2 id="status-effects">Status effects carry state across turns</h2>
+  <p>Four status effects do most of the work:</p>
+  <div class="status-chips">
+    <span class="status-chip"><span class="sc-dot sc-red"></span><span class="sc-lbl"><strong>Poison</strong> — ticks every start-of-turn, deals that many damage, decrements by 1.</span></span>
+    <span class="status-chip"><span class="sc-dot sc-yellow"></span><span class="sc-lbl"><strong>Weak</strong> — reduces affected side's attack damage by 25%. Stacks in duration, not severity.</span></span>
+    <span class="status-chip"><span class="sc-dot sc-yellow"></span><span class="sc-lbl"><strong>Vulnerable</strong> — increases affected side's incoming attack damage by 50%. Same stacking as Weak.</span></span>
+    <span class="status-chip"><span class="sc-dot sc-green"></span><span class="sc-lbl"><strong>Block</strong> — soaks the next incoming damage. Resets to 0 at the start of the player's next turn.</span></span>
+  </div>
+  <ul>
+    <li>
+      <strong>Poison</strong> ticks every start-of-turn, deals that many
+      damage, decrements by 1. Compounds: a stack of 10 poison over three
+      turns is 27 total damage (10+9+8).
+    </li>
+    <li>
+      <strong>Weak</strong> reduces the affected side's attack damage by
+      25%. Lasts a number of turns. Stacks in duration, not in severity.
+    </li>
+    <li>
+      <strong>Vulnerable</strong> increases the affected side's incoming
+      attack damage by 50%. Same stacking rules as Weak.
+    </li>
+    <li>
+      <strong>Block</strong> soaks the next incoming damage. Resets to 0 at
+      the start of the player's next turn (almost always).
+    </li>
+  </ul>
+  <p>
+    These four are why a Slay the Spire 2 combat is combinatorial rather
+    than additive. A turn that deals 30 damage into a vulnerable target that
+    was also weak hits different from the same 30 damage against a clean
+    target. The order of operations within a turn — Weak the enemy first,
+    then attack, then apply Vulnerable for next turn — is most of the
+    agent's job.
+  </p>
+
+  <h2 id="two-views">Two views of the same combat</h2>
+  <div class="diptych-wrap">
+    <div class="diptych">
+      <div class="dpanel bad">
+        <div class="d-label">Left · what the player sees</div>
+        <h3>2D art, animated intent icons, card hover tooltips, energy orbs, the whole game UI.</h3>
+        <ul>
+          <li>Screenshot at the top of this article.</li>
+          <li>Animations make the intent obvious at a glance.</li>
+          <li>Tooltips explain every card on hover.</li>
+        </ul>
+      </div>
+      <div class="dpanel good">
+        <div class="d-label">Right · what the agent sees</div>
+        <h3>A 583-dim float vector — embeddings, scalars, pooled pile summaries. Numbers.</h3>
+        <ul>
+          <li>Card embeddings, enemy embeddings.</li>
+          <li>Scalar HP, energy, intent flags, status-effect stacks.</li>
+          <li>Mean-pooled summaries of draw and discard piles.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="diptych-arrow" aria-hidden="true">→</div>
+  </div>
+  <p class="orienting">
+    Same game state. The agent's view is the one the
+    <a href={`${base}deep-dive/input-vector-dd/`}>input-vector deep-dive</a>
+    lays out in detail.
+  </p>
+  <p>
+    The serialization happens in the mod that hooks into the game
+    (<code>StateSerializer.cs</code>, already referenced above in the intent
+    section). Every combat state gets turned into a JSON blob, shipped to
+    the training process over a local socket, and the training process
+    converts it to the tensor the network reads. The interesting part isn't
+    the socket — it's the translation. The game speaks in objects and
+    references; the network speaks in floats; and the translation is where
+    most of the interesting design decisions live.
+  </p>
+
+  <h2 id="why-rl">Why this is interesting for RL</h2>
+  <p>
+    Three properties make this a harder RL problem than a first look would
+    suggest.
+  </p>
+  <p>
+    <strong>The action space is combinatorial.</strong> A 5-card hand
+    against 2 enemies with 3 energy has hundreds of legal turn sequences,
+    most of which are bad. The agent doesn't just pick one action per turn;
+    it picks a sequence, and the sequence branches on which cards it has
+    drawn that turn. The action space changes every turn because the hand
+    changes every turn. This is not the fixed-size discrete action space
+    that most RL tutorial environments assume.
+  </p>
+  <p>
+    <strong>The state is partially observed.</strong> Three things are
+    hidden: the order of the draw pile, the enemy intents beyond the
+    current turn, and the composition of future card rewards. The draw pile
+    is the biggest of these — the cards the agent will draw next turn are
+    already determined by the shuffle, just not yet known. A policy that
+    assumes "I'll be able to play Strike next turn" is making an inference
+    about a distribution, not reading a fact.
+  </p>
+  <p>
+    <strong>Credit assignment is long-horizon.</strong> A run is ~40
+    combats across three acts. A single card pickup in act 1 might be the
+    reason the run wins or loses in act 3. The reward signal is sparse —
+    the agent wins or loses a combat, wins or loses a run. The decisions
+    that caused each outcome are dozens or hundreds of steps in the past.
+    Any RL algorithm on this problem spends a lot of compute arguing with
+    itself about which decisions mattered.
+  </p>
+  <p>
+    Those three properties are why I trained an agent on this game instead
+    of one with a smaller action space or a fully-observable state. The
+    short version: if it learns, the thing it learned is worth something.
+    If it doesn't, the thing that didn't work is interesting to diagnose.
+    The rest of the site is the diagnosing.
+  </p>
+
+  <p class="attribution">
+    Slay the Spire 2 is a trademark of Mega Crit Games. This is an
+    explainer; I am not affiliated with Mega Crit.
+  </p>
+</Post>

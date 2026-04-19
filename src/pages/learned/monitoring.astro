@@ -1,0 +1,387 @@
+---
+import Post from '../../layouts/Post.astro';
+
+const headings = [
+  { text: 'What I built first',              id: 'what-i-built-first' },
+  { text: 'What went wrong',                 id: 'what-went-wrong' },
+  { text: 'Fix the Online detection',        id: 'iteration-1' },
+  { text: 'Fix the CPM attribution',         id: 'iteration-2' },
+  { text: 'What I\u2019d do first next time', id: 'next-time' },
+  { text: 'Technical details',               id: 'technical-details' },
+  { text: 'Key takeaways',                   id: 'key-takeaways' },
+];
+---
+<Post
+  title={"Monitoring: \u201cOnline\u201d Is Not the Same as \u201cWorking\u201d"}
+  date="2026-04-19"
+  activeTab="learned"
+  readingTime="7 min read"
+  headings={headings}
+>
+  <div class="diptych-wrap">
+    <div class="diptych">
+      <div class="dpanel lie">
+        <div class="d-label">What the dashboard said</div>
+        <div class="dashboard-mini" role="img" aria-label="Fake dashboard: eleven workers all reported online, 369 CPM total">
+          <div class="dash-header"><span>Worker</span><span>Status</span><span>CPM</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot0</span><span class="dr-pill online">Online</span><span class="dr-cpm">22.0</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot1</span><span class="dr-pill online">Online</span><span class="dr-cpm">22.0</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot2</span><span class="dr-pill online">Online</span><span class="dr-cpm">24.0</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot3</span><span class="dr-pill online">Online</span><span class="dr-cpm hot">90.0</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot4</span><span class="dr-pill online">Online</span><span class="dr-cpm">21.0</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot5</span><span class="dr-pill online">Online</span><span class="dr-cpm">23.0</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot6</span><span class="dr-pill online">Online</span><span class="dr-cpm">22.0</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot7</span><span class="dr-pill online">Online</span><span class="dr-cpm hot">78.0</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot8</span><span class="dr-pill online">Online</span><span class="dr-cpm">20.0</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot9</span><span class="dr-pill online">Online</span><span class="dr-cpm">23.0</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot10</span><span class="dr-pill online">Online</span><span class="dr-cpm">24.0</span></div>
+        </div>
+        <div class="d-stat">
+          <span class="d-num">11 / 11</span>
+          <span class="d-ntext">workers online<br />369 CPM total</span>
+        </div>
+      </div>
+      <div class="dpanel truth">
+        <div class="d-label">What was actually happening</div>
+        <div class="dashboard-mini" role="img" aria-label="Ground truth: six workers dead for 47 minutes, five active with two inflated by buffer flushes">
+          <div class="dash-header"><span>Worker</span><span>Status</span><span>CPM</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot0</span><span class="dr-pill online">Online</span><span class="dr-cpm">22.0</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot1</span><span class="dr-pill online">Online</span><span class="dr-cpm">22.0</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot2</span><span class="dr-pill stale">Stale&nbsp;47m</span><span class="dr-cpm zero">&mdash;</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot3</span><span class="dr-pill online">Online</span><span class="dr-cpm">24.0<span class="anomaly-flag">flush</span></span></div>
+          <div class="dash-row"><span class="dr-name">stsBot4</span><span class="dr-pill stale">Stale&nbsp;47m</span><span class="dr-cpm zero">&mdash;</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot5</span><span class="dr-pill online">Online</span><span class="dr-cpm">23.0</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot6</span><span class="dr-pill stale">Stale&nbsp;47m</span><span class="dr-cpm zero">&mdash;</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot7</span><span class="dr-pill online">Online</span><span class="dr-cpm">21.0<span class="anomaly-flag">flush</span></span></div>
+          <div class="dash-row"><span class="dr-name">stsBot8</span><span class="dr-pill stale">Stale&nbsp;47m</span><span class="dr-cpm zero">&mdash;</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot9</span><span class="dr-pill stale">Stale&nbsp;47m</span><span class="dr-cpm zero">&mdash;</span></div>
+          <div class="dash-row"><span class="dr-name">stsBot10</span><span class="dr-pill stale">Stale&nbsp;47m</span><span class="dr-cpm zero">&mdash;</span></div>
+        </div>
+        <div class="d-stat">
+          <span class="d-num">5 / 11</span>
+          <span class="d-ntext">actually producing<br />112 CPM total</span>
+        </div>
+      </div>
+    </div>
+    <div class="diptych-arrow labeled">reality &rarr;</div>
+  </div>
+
+  <p class="deck">
+    I built a training dashboard early and thought I was monitoring my
+    fleet. <strong>I was not.</strong> The dashboard happily reported 11
+    workers &ldquo;Online&rdquo; while 6 of them were dead for 47 minutes.
+    Monitoring that doesn&rsquo;t reflect reality is worse than no
+    monitoring &mdash; it gives you <span class="em-amber">false confidence</span>.
+  </p>
+
+  <p>
+    Two bugs, one lesson. The dashboard was wrong about which workers were
+    alive, and it was wrong about how much work they were doing. Both bugs
+    came from measuring the thing that was easy to measure instead of the
+    thing I actually wanted to know. Both produced numbers that looked fine
+    until I did the arithmetic in my head and noticed they couldn&rsquo;t
+    be.
+  </p>
+
+  <p>
+    What follows is the dashboard I built first, the two ways it lied to
+    me, and the two iterations that fixed each lie.
+  </p>
+
+  <h2 id="what-i-built-first">What I built first</h2>
+  <p>
+    Simple dashboard with the obvious metrics. The learner collects
+    episodes from actor proxies over TCP. I added a worker tracker:
+  </p>
+<pre data-file="learner/workers.py"><code>@dataclass
+class WorkerStats:
+    ip: str
+    connected: bool = True          # true until socket close
+    episodes_total: int = 0
+    last_seen: float = field(default_factory=time.time)       # updated when episodes arrive
+    _timestamps: deque = field(default_factory=lambda: deque(maxlen=200))</code></pre>
+
+  <p>The dashboard showed:</p>
+  <ul>
+    <li><strong>Status:</strong> <code>&ldquo;Online&rdquo;</code> if <code>connected == True</code></li>
+    <li><strong>Combats/min:</strong> count of episode timestamps within the last 60 seconds</li>
+    <li><strong>Total episodes:</strong> running counter</li>
+    <li><strong>Last seen:</strong> seconds since last episode</li>
+  </ul>
+
+  <p>
+    The logic seemed reasonable when I wrote it. <code>connected</code>
+    flips to <code>False</code> when the socket closes cleanly. The
+    timestamps deque gets a new entry every time an episode arrives.
+    <code>last_seen</code> updates with each episode. All four fields are
+    things the learner directly observes. No derived metrics, no
+    heuristics, no inference &mdash; just report what you see.
+  </p>
+
+  <p>
+    That was the problem. What the learner sees and what the worker is
+    actually doing are not the same thing.
+  </p>
+
+  <h2 id="what-went-wrong">What went wrong</h2>
+
+  <h3>Problem 1: &ldquo;Online&rdquo; meant &ldquo;still connected,&rdquo; not &ldquo;still working&rdquo;</h3>
+  <p>
+    The <code>connected</code> flag only flips to <code>False</code> on a
+    clean socket close. If a worker crashed without closing the socket,
+    lost its LAN connection, hit an unhandled exception in the actor loop,
+    or froze on a game hang &mdash; the socket remained in
+    <code>ESTABLISHED</code> state on the learner side for tens of minutes.
+    TCP keepalives eventually detect the dead connection, but the default
+    <code>tcp_keepalive_time</code> is 2 hours on Linux and
+    <code>KeepAliveTime</code> is the same 2 hours on Windows &mdash; useless
+    on a 47-minute horizon.
+  </p>
+  <p>
+    Result: the dashboard showed <strong>&ldquo;Online&rdquo;</strong> for
+    workers that hadn&rsquo;t produced an episode in 47 minutes.
+  </p>
+
+  <div class="callout gotcha">
+    <div class="callout-label">False confidence</div>
+    <p>
+      This was worse than useless. When I glanced at the dashboard and
+      saw &ldquo;11/11 workers online,&rdquo; I trusted that number.
+      I didn&rsquo;t dig deeper. <strong>Meanwhile more than half my
+      fleet was dead.</strong>
+    </p>
+  </div>
+
+  <h3>Problem 2: CPM was inflated by buffered flushes</h3>
+  <p>The combats-per-minute calculation:</p>
+<pre data-file="learner/workers.py"><code>@property
+def combats_per_min(self) -&gt; float:
+    now = time.time()
+    recent = [t for t in self._timestamps if now - t &lt;= 60.0]
+    return round(len(recent), 1)</code></pre>
+
+  <p>
+    <code>_timestamps</code> was populated at <strong>receipt time</strong>
+    &mdash; when the learner received the episode, not when the episode
+    actually completed on the worker. Usually fine. But with flaky LAN
+    connections, the actor proxy would buffer episodes during disconnects
+    and flush the buffer on reconnect: 20&ndash;30 episodes arriving in 2
+    seconds, all stamped with the same receipt timestamp.
+  </p>
+
+  <p>
+    A worker that had been offline for a minute, then briefly reconnected,
+    would show <strong>inflated CPM</strong> as its buffered backlog landed
+    in a narrow window. The dashboard reported 90 CPM for one worker while
+    others showed 0 &mdash; even though all of them should have been
+    roughly equal.
+  </p>
+
+  <div class="callout gotcha">
+    <div class="callout-label">Do the arithmetic</div>
+    <p>
+      5 visible &ldquo;active&rdquo; workers summed to roughly the
+      expected 11-worker total CPM. That couldn&rsquo;t be right unless
+      each active worker was doing ~2&times; its normal output, which
+      is physically impossible. I should have noticed earlier.
+    </p>
+  </div>
+
+  <div class="version-kicker">Iteration 1</div>
+  <section id="iteration-1" class="iter-card">
+    <h2>Fix the Online detection</h2>
+    <div class="iter-grid">
+      <div class="panel what-i-did">
+        <div class="panel-label">What I had</div>
+        <p>
+          <code>&ldquo;Online&rdquo;</code> if <code>connected == True</code>.
+          One source of truth, on the learner, updated only by
+          socket-close events. Clean code; wrong answer.
+        </p>
+      </div>
+      <div class="panel what-worked">
+        <div class="panel-label">What I added</div>
+        <p>
+          A staleness check, computed client-side in the dashboard:
+        </p>
+<pre><code>const stale = w.last_seen_s &gt; 120;
+const activeNow = w.connected &amp;&amp; !stale;
+const status = !w.connected
+  ? "Offline"
+  : (stale ? "Stale" : "Online");</code></pre>
+        <p>
+          Now a worker has to both (a) hold an open socket <em>and</em>
+          (b) have produced an episode within the last 2 minutes to count
+          as Online. Workers that silently stopped show
+          <strong>Stale</strong> with a grey dot instead of the green
+          <strong>Online</strong> badge. The active count and total CPM
+          only sum workers that are truly active.
+        </p>
+      </div>
+    </div>
+    <p>
+      The 120-second threshold is a heuristic. Slow workers &mdash; during
+      a curriculum stage transition, say, when episodes take longer
+      &mdash; might briefly show Stale before returning to Online.
+      That&rsquo;s acceptable: <strong>a false Stale is much less
+      dangerous than a false Online.</strong> The worst case of a false
+      Stale is that I go look at a worker that&rsquo;s fine. The worst
+      case of a false Online is that I let six dead workers sit unnoticed
+      for 47 minutes.
+    </p>
+    <div class="result-chip">
+      <span class="num">120s</span>
+      <span class="lbl">stale threshold &middot; moved to UI layer</span>
+    </div>
+  </section>
+
+  <div class="version-kicker">Iteration 2</div>
+  <section id="iteration-2" class="iter-card">
+    <h2>Fix the CPM attribution</h2>
+    <div class="iter-grid">
+      <div class="panel what-i-did">
+        <div class="panel-label">What I had</div>
+        <p>
+          <code>_timestamps</code> populated at receipt time. One timestamp
+          per episode. Correct when the network is smooth; wrong whenever
+          a buffer flushes.
+        </p>
+      </div>
+      <div class="panel what-worked">
+        <div class="panel-label">What I added</div>
+        <p>Two changes, one on each side of the wire.</p>
+        <p>
+          On the actor side, stamp the episode with its completion time
+          when pushing to the learner:
+        </p>
+<pre><code>ep_dict = {
+    "transitions": raw_transitions,
+    "summary": summary,
+    "completed_at": time.time(),  # added
+}</code></pre>
+        <p>
+          On the learner side, use that timestamp for the CPM window
+          instead of receipt time, falling back to receipt time if the
+          field is missing:
+        </p>
+<pre><code>def record_episode(self, completed_at: float | None = None):
+    self.episodes_total += 1
+    self.last_seen = time.time()  # still receipt time for "last seen"
+    self._timestamps.append(
+        completed_at if completed_at is not None else self.last_seen
+    )</code></pre>
+      </div>
+    </div>
+    <p>
+      Now when a worker flushes 30 buffered episodes, each episode
+      contributes to the CPM window based on when it was <em>actually
+      completed</em>, not when it arrived. The inflated-CPM-on-reconnect
+      bug is gone.
+    </p>
+    <p>
+      The <code>ep_dict.get(&ldquo;completed_at&rdquo;)</code> default-to-<code>None</code>
+      behavior is load-bearing. It means I don&rsquo;t have to redeploy
+      all 11 workers simultaneously &mdash; the fix rolls out gracefully
+      as each worker gets redeployed. Older actor proxies that don&rsquo;t
+      include the field keep working on receipt time; the two that do get
+      the accurate window. Backward compat is not glamour work, but it
+      kept me from having to coordinate an 11-machine atomic restart.
+    </p>
+    <div class="result-chip">
+      <span class="num">0</span>
+      <span class="lbl">false-flush CPM spikes</span>
+    </div>
+  </section>
+
+  <h2 id="next-time">What I&rsquo;d do first next time</h2>
+  <p>
+    <strong>Monitoring should reflect reality, not connection state.</strong>
+    The question &ldquo;is this worker contributing?&rdquo; is not the
+    same as &ldquo;is this socket open?&rdquo; Define &ldquo;healthy&rdquo;
+    as &ldquo;producing recent output,&rdquo; not &ldquo;we have a handle
+    to it.&rdquo; The socket is a necessary condition, not a sufficient
+    one.
+  </p>
+
+  <p>
+    <strong>Staleness thresholds belong in the UI layer, not the data
+    layer.</strong> The learner doesn&rsquo;t need to know what
+    &ldquo;stale&rdquo; means &mdash; it just reports
+    <code>last_seen</code> in seconds. The dashboard decides what
+    threshold makes a worker stale. Server stays simple, UI definition
+    stays flexible, and tuning the threshold doesn&rsquo;t require a
+    learner restart.
+  </p>
+
+  <p>
+    <strong>Distinguish receipt time from event time.</strong> Any metric
+    involving time-windowed counts should use the event&rsquo;s actual
+    timestamp, not the timestamp of when you saw it. This matters any
+    time there&rsquo;s a queue, buffer, or network between event and
+    observer &mdash; which is, in a distributed system, everywhere.
+    Classic distributed-systems lesson, re-learned the hard way.
+  </p>
+
+  <p>
+    <strong>Sanity-check the dashboard against basic arithmetic.</strong>
+    The inflated-CPM bug was obvious in retrospect: 5 workers summing to
+    roughly an 11-worker total is physically impossible. I should have
+    caught it by eye, but I wasn&rsquo;t in the habit of doing the math on
+    what I was looking at. Now I am. If the totals don&rsquo;t factor,
+    something is lying.
+  </p>
+
+  <p>
+    <strong>Backward-compatible protocol changes save ops pain.</strong>
+    <code>.get(&ldquo;completed_at&rdquo;)</code> with a
+    <code>None</code> default means I could redeploy workers one at a
+    time instead of coordinating an 11-machine atomic restart. Protocol
+    additions want a default on the consumer side; protocol removals want
+    a deprecation window on the producer side. Neither is free, but
+    neither is expensive if you plan for it.
+  </p>
+
+  <p>
+    <strong>The lesson behind the lesson:</strong> monitoring is a
+    product. Users &mdash; me, glancing at a dashboard at 9pm while the
+    cluster runs overnight &mdash; consume it the way they consume any
+    other product. If the product says &ldquo;everything is fine&rdquo;
+    when everything is not fine, they act on that. The dashboard was not
+    a neutral reporter of facts. It was an agent making claims, and I had
+    accepted its claims without verifying the inference from the data to
+    the claim. Monitoring that doesn&rsquo;t model what you actually care
+    about is not &ldquo;minimal&rdquo; &mdash; it&rsquo;s misleading.
+  </p>
+
+  <h2 id="technical-details">Technical details</h2>
+  <ul>
+    <li><strong>Data path:</strong> actor proxy &rarr; TCP &rarr; learner &rarr; <code>workers.json</code> (file) &rarr; HTTP &rarr; dashboard (5-second poll)</li>
+    <li><strong>Storage:</strong> <code>WorkerStats</code> dataclass in memory, serialized to JSON every 5s</li>
+    <li><strong>Stale threshold:</strong> 120 seconds since last episode (UI-side)</li>
+    <li><strong>CPM window:</strong> 60 seconds, max 200 timestamps in rolling deque</li>
+  </ul>
+
+  <h2 id="key-takeaways">Key takeaways</h2>
+  <div class="takeaways-grid">
+    <div class="tg-tile">
+      <div class="tg-n">01 &middot; Connected &ne; working</div>
+      <div class="tg-lbl">Validate health by observing recent output, not by checking connection state. A socket can be open forever while the process behind it is dead.</div>
+    </div>
+    <div class="tg-tile">
+      <div class="tg-n">02 &middot; Event time, not receipt time</div>
+      <div class="tg-lbl">Any queue or buffer between event and observer distorts receipt time. Stamp the event at the source for time-series metrics.</div>
+    </div>
+    <div class="tg-tile">
+      <div class="tg-n">03 &middot; Staleness belongs in UI</div>
+      <div class="tg-lbl">Keep the server reporting raw observations; let the presentation layer decide what &ldquo;fresh enough&rdquo; means. You&rsquo;ll change the threshold more than you change the data.</div>
+    </div>
+    <div class="tg-tile">
+      <div class="tg-n">04 &middot; Sanity-check the math</div>
+      <div class="tg-lbl">If the per-worker numbers don&rsquo;t sum to the total the way they physically must, they don&rsquo;t. The dashboard is lying to you; figure out which layer.</div>
+    </div>
+    <div class="tg-tile">
+      <div class="tg-n">05 &middot; Backward-compat saves ops pain</div>
+      <div class="tg-lbl"><code>.get()</code> with defaults when reading new fields lets producer and consumer roll out independently &mdash; which matters more than you think when the producer is eleven machines.</div>
+    </div>
+  </div>
+</Post>

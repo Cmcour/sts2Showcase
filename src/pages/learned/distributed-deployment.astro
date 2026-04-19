@@ -1,0 +1,393 @@
+---
+import Post from '../../layouts/Post.astro';
+
+const headings = [
+  { text: 'The fleet',                           id: 'the-fleet' },
+  { text: 'What I tried first',                  id: 'what-i-tried-first' },
+  { text: 'Iteration 2: OpenSSH for Windows',    id: 'iteration-2' },
+  { text: 'The stack that worked',               id: 'the-stack' },
+  { text: 'restart_workers.bat',                 id: 'restart-workers' },
+  { text: 'SSH',                                 id: 'ssh' },
+  { text: 'schtasks',                            id: 'schtasks' },
+  { text: 'cmd.exe + run_worker.bat',            id: 'cmd-run-worker' },
+  { text: 'proxy + games',                       id: 'proxy-games' },
+  { text: 'Per-worker papercuts',                id: 'per-worker-papercuts' },
+  { text: 'What I\u2019d do first next time',    id: 'next-time' },
+  { text: 'Takeaways',                           id: 'takeaways' },
+  { text: 'Technical details',                   id: 'technical-details' },
+  { text: 'Closing',                             id: 'closing' },
+];
+---
+<Post
+  title="Distributed Deployment on Windows &mdash; Death by a Thousand Papercuts"
+  date="2026-04-18"
+  activeTab="learned"
+  readingTime="9 min read"
+  headings={headings}
+>
+  <section id="the-fleet">
+    <div class="fleet-kicker">The fleet &middot; 11 laptops</div>
+    <div class="fleet-grid" role="img" aria-label="Fleet of 11 worker laptops (stsBot0..stsBot10 on the 10.0.0.0/24 LAN), 3 with per-machine incidents: stsBot3 WDAC block, stsBot7 zero-byte DLL, stsBot9 hostname resolution.">
+      <div class="fleet-tile ready"><span class="ft-name">stsBot0</span><span class="ft-host">10.0.0.50</span><span class="ft-status">Ready</span></div>
+      <div class="fleet-tile ready"><span class="ft-name">stsBot1</span><span class="ft-host">10.0.0.54</span><span class="ft-status">Ready</span></div>
+      <div class="fleet-tile ready"><span class="ft-name">stsBot2</span><span class="ft-host">10.0.0.73</span><span class="ft-status">Ready</span></div>
+      <div class="fleet-tile incident"><span class="ft-name">stsBot3</span><span class="ft-host">10.0.0.77</span><span class="ft-status">WDAC block</span></div>
+      <div class="fleet-tile ready"><span class="ft-name">stsBot4</span><span class="ft-host">10.0.0.70</span><span class="ft-status">Ready</span></div>
+      <div class="fleet-tile ready"><span class="ft-name">stsBot5</span><span class="ft-host">10.0.0.69</span><span class="ft-status">Ready</span></div>
+      <div class="fleet-tile ready"><span class="ft-name">stsBot6</span><span class="ft-host">10.0.0.64</span><span class="ft-status">Ready</span></div>
+      <div class="fleet-tile incident"><span class="ft-name">stsBot7</span><span class="ft-host">10.0.0.84</span><span class="ft-status">0-byte DLL</span></div>
+      <div class="fleet-tile ready"><span class="ft-name">stsBot8</span><span class="ft-host">10.0.0.60</span><span class="ft-status">Ready</span></div>
+      <div class="fleet-tile incident"><span class="ft-name">stsBot9</span><span class="ft-host">10.0.0.75</span><span class="ft-status">Hostname</span></div>
+      <div class="fleet-tile ready"><span class="ft-name">stsBot10</span><span class="ft-host">10.0.0.82</span><span class="ft-status">Ready</span></div>
+      <div class="fleet-tile placeholder" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <p class="deck">
+    Windows is a hostile environment for distributed training, and every
+    approach I tried had a non-obvious failure mode.
+    <strong>The thing that eventually worked is weirder than the thing
+    I&rsquo;d have picked if I started over.</strong>
+  </p>
+
+  <p>
+    Eleven laptops. Eight of them boot, install, run. Three of them fought
+    me. Those three are the reason this article exists, alongside the launch
+    chain that holds the rest of them together &mdash; a chain whose weirdest
+    link is the Windows task scheduler.
+  </p>
+
+  <p>
+    This post is about what it took to get that fleet running the same
+    training job reliably, with one-key restarts from my desk. The short
+    version: Microsoft&rsquo;s officially recommended remote-execution path
+    did not work for me, and the obvious Unix-shaped substitute did not
+    work either. The thing that eventually did work uses a tool nobody
+    would pick up for this purpose on day one.
+  </p>
+
+  <h2 id="what-i-tried-first">What I tried first</h2>
+  <p>
+    <strong>PowerShell Remoting (WinRM / PSRemoting).</strong> Microsoft&rsquo;s
+    officially recommended answer for running commands on remote Windows
+    machines. One
+    <code>Enable-PSRemoting</code> on each worker and you&rsquo;re supposed
+    to be done.
+  </p>
+  <p>
+    I got it working on one machine in a day. Then I tried to scale.
+  </p>
+
+  <div class="callout gotcha">
+    <div class="callout-label">Blocker</div>
+    <p>
+      <strong>PIN-only login accounts can&rsquo;t authenticate to WinRM.</strong>
+      Most of my laptops use Windows Hello PIN for login, with no password
+      set. PSRemoting wants one of three things: a password I don&rsquo;t
+      have, a Kerberos + domain join my home network doesn&rsquo;t offer,
+      or CredSSP with exemptions. Each workaround I looked at required
+      applying the same workaround to all eleven machines. That&rsquo;s
+      eleven points of failure for a setup step. I gave PSRemoting a few
+      more days and then cut it.
+    </p>
+  </div>
+
+  <p>
+    The lesson I keep drawing out of this: the &ldquo;officially
+    correct&rdquo; answer on Windows has opinions about how the rest of
+    your environment is set up. Personal laptops with PIN login violate
+    those opinions.
+  </p>
+
+  <h2 id="iteration-2">Iteration 2: OpenSSH for Windows</h2>
+  <p>
+    Windows ships an OpenSSH server now. <code>Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0</code>,
+    start the service, set it to automatic, done. Public key auth sidesteps
+    the password problem entirely &mdash; copy a public key into the
+    worker&rsquo;s <code>authorized_keys</code> and <code>ssh user@worker</code>
+    just works.
+  </p>
+  <p>
+    I had reliable remote shell execution by the end of the afternoon.
+  </p>
+
+  <div class="callout gotcha">
+    <div class="callout-label">Blocker</div>
+    <p>
+      <strong>Spawned processes die when the SSH session closes.</strong>
+      <code>ssh worker "start_game.bat"</code> launches the game. The game
+      dies the second SSH disconnects. <code>nohup</code> and
+      <code>setsid</code> don&rsquo;t exist on Windows. <code>start /b</code>
+      didn&rsquo;t detach cleanly. <code>powershell Start-Process</code>
+      didn&rsquo;t either. On Windows, processes inherit the login session
+      of their parent, and when the SSH session ends, the session gets
+      cleaned up with its children.
+    </p>
+  </div>
+
+  <p>
+    I was looking for a way to tell Windows &ldquo;start this and forget
+    about me.&rdquo; The usual Unix idioms didn&rsquo;t work.
+  </p>
+
+  <h2 id="the-stack">The stack that ended up working</h2>
+  <p>
+    Each link in the chain below earned its place by fixing one of the
+    papercuts above. The weird one is <code>schtasks</code> &mdash; the
+    Windows task scheduler &mdash; used not for scheduling but as a way to
+    launch a process in a session that will outlive me.
+  </p>
+
+  <div class="chain-diagram" role="img" aria-label="Launch chain: restart_workers.bat calls SSH, which calls schtasks (the weird link), which launches cmd.exe, which runs run_worker.bat, which spawns a proxy and 4 to 6 game instances.">
+    <div class="cd-caption">The launch chain</div>
+<pre>    restart_workers.bat
+            &#9474;
+            &#9660;
+           SSH
+            &#9474;
+            &#9660;
+       <span class="cd-weird">schtasks</span>        <span class="cd-note">&#9668;&#9472;&#9472; [the weird link]</span>
+            &#9474;
+            &#9660;
+         cmd.exe
+            &#9474;
+            &#9660;
+       run_worker.bat
+         &#9585;           &#9586;
+        &#9660;             &#9660;
+      proxy          games (4&ndash;6)</pre>
+  </div>
+
+  <p>
+    Every link gets its own section below. The first one is the link the
+    chain itself replaces; the rest defend their spot.
+  </p>
+
+  <h3 id="restart-workers">restart_workers.bat</h3>
+  <p>
+    A driver script on my desk. Reads <code>workers.txt</code> (a static
+    <code>name=ip</code> list &mdash; no dynamic discovery), iterates, and
+    fires one SSH command per worker. Kills old processes, pulls fresh
+    code, re-launches. Sequential, not parallel; eleven workers go in about
+    a minute.
+  </p>
+  <p>
+    I wrote this later than I should have. Two or three workers is tractable
+    by hand. Past that, manual SSH becomes the dominant cost of any
+    training-loop change you want to roll out.
+  </p>
+
+  <h3 id="ssh">SSH</h3>
+  <p>
+    The remote-execution transport. Public key auth, which dodges the
+    PIN-account problem. No password, no Kerberos, no CredSSP. It&rsquo;s
+    the same OpenSSH you use on Linux, carrying the same commands.
+  </p>
+
+  <div class="callout caveat">
+    <div class="callout-label">Why this link &mdash; SSH over PSRemoting</div>
+    <p>
+      PSRemoting is the &ldquo;right&rdquo; answer in a domain environment.
+      On personal machines with PIN login, it&rsquo;s a non-starter. SSH
+      key auth just works.
+    </p>
+  </div>
+
+  <h3 id="schtasks">schtasks</h3>
+  <p>
+    This is the strange one. <code>schtasks</code> is the Windows task
+    scheduler &mdash; <code>/create</code> a one-shot task with
+    <code>/sc once /st 00:00 /f</code>, <code>/run</code> it,
+    <code>/delete</code> it. What I&rsquo;m actually using it for has
+    nothing to do with scheduling:
+  </p>
+<pre class="code-block"><code>schtasks /create /tn STS2Worker /tr "cmd.exe /c run_worker.bat" /sc once /st 00:00 /f
+schtasks /run /tn STS2Worker
+schtasks /delete /tn STS2Worker /f</code></pre>
+
+  <div class="callout result">
+    <div class="callout-label">Why this link &mdash; scheduled tasks run in their own session</div>
+    <p>
+      They&rsquo;re independent of the SSH session that scheduled them.
+      When I disconnect, the task keeps running. This is the one built-in
+      Windows mechanism I found that detaches a process from the
+      caller&rsquo;s session reliably. It is not what the tool is meant
+      for. It works.
+    </p>
+  </div>
+
+  <h3 id="cmd-run-worker">cmd.exe + run_worker.bat</h3>
+  <p>
+    The task scheduler launches <code>cmd.exe</code>, which launches
+    <code>run_worker.bat</code>. The batch file&rsquo;s first meaningful
+    line is <code>title STS2 Worker Main</code>.
+  </p>
+
+  <div class="callout caveat">
+    <div class="callout-label">Why this link &mdash; kill by window title, not PID or command line</div>
+    <p>
+      To stop a worker I use
+      <code>taskkill /F /FI "WINDOWTITLE eq STS2 Worker Main"</code>.
+      Filtering by command line means escaping quotes through SSH;
+      filtering by window title is bulletproof. Setting the title
+      explicitly at the top of the script costs one line and saves a class
+      of fragile shell-quoting bugs.
+    </p>
+  </div>
+
+  <h3 id="proxy-games">proxy + games</h3>
+  <p>
+    <code>run_worker.bat</code> spawns one actor proxy process and four to
+    six headless game instances. The games run combat encounters against
+    the current policy; the proxy aggregates their transitions and streams
+    them up to the learner. Weight sync happens the other direction, every
+    16 episodes.
+  </p>
+  <p>
+    The specific per-worker count (four to six) is tuned to per-machine
+    thermals &mdash; some of the laptops throttle aggressively when all
+    cores run hot, so the fleet is not uniform on that axis either.
+  </p>
+
+  <h2 id="per-worker-papercuts">Per-worker papercuts</h2>
+  <p>
+    The fleet-grid hero labeled three machines as incidents. Here is what
+    happened to each.
+  </p>
+
+  <div class="callout gotcha">
+    <div class="callout-label">stsBot3 &mdash; Windows Defender Application Control blocked the game executable</div>
+    <p>
+      Device Guard / WDAC is an enterprise code-integrity feature. The game
+      executable wasn&rsquo;t signed in a way the local policy on this
+      machine was willing to accept, and the machine isn&rsquo;t org-joined
+      &mdash; the WDAC policy was just enabled at some point, on its own. I
+      tried signature troubleshooting first and got nowhere. What actually
+      worked (documented in <code>docs/worker_commands.md</code>) was
+      disabling DEP/CFG process mitigations for the game binary and turning
+      off the hypervisor launch type, then rebooting:
+    </p>
+<pre class="code-block"><code>Set-ProcessMitigation -Name "SlayTheSpire2.exe" -Disable DEP,CFG
+bcdedit /set hypervisorlaunchtype off</code></pre>
+    <p>
+      Acceptable for a personal laptop running modded game binaries. Not
+      acceptable on a corporate machine.
+    </p>
+  </div>
+
+  <div class="callout gotcha">
+    <div class="callout-label">stsBot7 &mdash; sts2.dll was zero bytes</div>
+    <p>
+      After a redeploy, the mod build on this worker started failing with
+      134 compile errors, all &ldquo;MegaCrit not found.&rdquo;
+      <code>dir</code> showed <code>sts2.dll</code> at 0 bytes. The
+      patcher had started rewriting the DLL while a prior game instance
+      still had a file lock, and the truncated write landed on disk. Fix:
+      Steam &rarr; STS2 &rarr; Properties &rarr; Local Files &rarr; Verify
+      Integrity. Steam re-downloads the DLL; the patcher works normally on
+      the next run. Root-cause fix &mdash; making the patcher refuse to
+      run against a zero-byte target, or back up before writing &mdash; is
+      on my list and isn&rsquo;t done.
+    </p>
+  </div>
+
+  <div class="callout gotcha">
+    <div class="callout-label">stsBot9 &mdash; couldn&rsquo;t resolve the learner&rsquo;s hostname</div>
+    <p>
+      Two workers hit this. Static IP assignment on the learner side was
+      inconsistent with the <code>workers.txt</code> entries each worker
+      was reading. Ordinary DHCP-reservation drift. Unglamorous to fix.
+      Worth noting because it&rsquo;s the second-place finish in
+      &ldquo;things that were unique to one machine.&rdquo;
+    </p>
+  </div>
+
+  <p>
+    Three incidents, three different root causes, three different fixes.
+    There was no pattern across them except that each one was a local
+    condition of one machine I had not looked at before that moment.
+  </p>
+
+  <h2 id="next-time">What I&rsquo;d do first next time</h2>
+  <p>
+    <strong>SSH from day one, not PSRemoting.</strong> PSRemoting is the
+    correct answer for machines in a domain. For personal laptops with PIN
+    login, it&rsquo;s a trap. SSH sidesteps the authentication cliff
+    entirely.
+  </p>
+  <p>
+    <strong>Know about <code>schtasks</code> for process detachment.</strong>
+    This is the single most useful Windows trick I took out of the project.
+    Any time you need a process to survive the session that started it, a
+    one-shot scheduled task is the answer. It is ugly and it works.
+  </p>
+  <p>
+    <strong>Assume each worker will have one unique failure.</strong>
+    Across eleven, I hit one WDAC block, one corrupted DLL, one broken
+    Python install, and two hostname-resolution issues. Five of eleven,
+    each different. Plan for per-machine triage &mdash; no uniform rollout
+    is going to be uniform.
+  </p>
+  <p>
+    <strong>Build a one-key restart before the fleet gets past two or
+    three.</strong> SSH-ing by hand is fine for a few machines. Past that,
+    manual restarts become the dominant cost of every code change.
+  </p>
+  <p>
+    <strong>Set explicit window titles on your batch files.</strong>
+    <code>title STS2 Worker Main</code> at the top of the script;
+    <code>taskkill /F /FI "WINDOWTITLE eq &hellip;"</code> to stop it.
+    Bulletproof, no quote-escaping, works over SSH.
+  </p>
+
+  <h2 id="takeaways">Takeaways</h2>
+  <div class="takeaways-grid">
+    <div class="tg-tile">
+      <span class="tg-n">01</span>
+      <span class="tg-lbl">SSH, not PSRemoting</span>
+    </div>
+    <div class="tg-tile">
+      <span class="tg-n">02</span>
+      <span class="tg-lbl">schtasks for detachment</span>
+    </div>
+    <div class="tg-tile">
+      <span class="tg-n">03</span>
+      <span class="tg-lbl">Each worker a snowflake</span>
+    </div>
+    <div class="tg-tile">
+      <span class="tg-n">04</span>
+      <span class="tg-lbl">Restart script before scaling</span>
+    </div>
+    <div class="tg-tile">
+      <span class="tg-n">05</span>
+      <span class="tg-lbl">Kill by window title</span>
+    </div>
+  </div>
+  <ol>
+    <li><strong>SSH, not PSRemoting</strong> &mdash; PIN accounts kill PSRemoting; key auth just works.</li>
+    <li><strong><code>schtasks</code> for detachment</strong> &mdash; the only reliable way to outlive the SSH session.</li>
+    <li><strong>Assume each worker is a snowflake</strong> &mdash; plan for per-machine triage, not uniform rollout.</li>
+    <li><strong>Restart script before scaling</strong> &mdash; two workers manual is fine, eleven is not.</li>
+    <li><strong>Kill by window title</strong> &mdash; <code>taskkill /F /FI "WINDOWTITLE eq &hellip;"</code> beats command-line filters.</li>
+  </ol>
+
+  <h2 id="technical-details">Technical details</h2>
+  <ul>
+    <li><strong>Workers:</strong> 11 laptops, mix of Windows 10 and 11, mix of PIN and password auth</li>
+    <li><strong>Network:</strong> home LAN with DHCP reservations, ~1ms latency, occasional WiFi flakiness</li>
+    <li><strong>Per-worker load:</strong> 4&ndash;6 headless game instances + 1 actor proxy</li>
+    <li><strong>Launch chain:</strong> <code>restart_workers.bat</code> &rarr; SSH &rarr; <code>schtasks</code> &rarr; <code>cmd.exe</code> &rarr; <code>run_worker.bat</code> &rarr; proxy + games</li>
+    <li><strong>Worker discovery:</strong> static <code>workers.txt</code> (<code>name=ip</code> entries), no dynamic discovery</li>
+    <li><strong>Weight sync:</strong> actor proxy pulls fresh weights from the learner every 16 episodes</li>
+  </ul>
+
+  <p id="closing">
+    The final stack is not something I&rsquo;d have designed up front.
+    It&rsquo;s something I arrived at by running into one wall after
+    another and recording what got me past each one. That&rsquo;s most of
+    what &ldquo;operational experience on Windows&rdquo; turned out to
+    mean for me on this project &mdash; a list of walls, and the specific
+    shape of the hole I dug through each of them.
+  </p>
+</Post>
+                                                

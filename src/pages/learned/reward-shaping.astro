@@ -1,39 +1,271 @@
 ---
 import Post from '../../layouts/Post.astro';
+
+const headings = [
+  { text: 'Version 1 · Terminal only',    id: 'version-1' },
+  { text: 'Version 2 · HP preservation',  id: 'version-2' },
+  { text: 'Version 3 · Turn penalty',     id: 'version-3' },
+  { text: 'What I\u2019d do first next time', id: 'next-time' },
+  { text: 'Technical details',            id: 'technical-details' },
+  { text: 'Key takeaways',                id: 'key-takeaways' },
+];
 ---
-<Post title="Reward Shaping: Teaching an Agent What Winning Means" date="April 2026" activeTab="learned">
+<Post
+  title="Reward Shaping: Every Iteration Got Gamed"
+  date="2026-04-18"
+  activeTab="learned"
+  readingTime="6 min read"
+  headings={headings}
+>
+  <section class="article-hero">
+    <div class="hero-left">
+      <p class="deck">
+        The reward function is the single most important design decision in an
+        RL system. Every version I wrote was exploited by the agent in some
+        surprising way, and I had to iterate three times before landing on a
+        reward that produced the behavior I actually wanted.
+      </p>
+    </div>
+    <div class="hero-right">
+      <div class="pre-label">The Outcome</div>
+      <div class="tile tile-prominent">
+        <div class="tile-num">70&ndash;85%</div>
+        <div class="tile-lbl">Final Stage&nbsp;0 win rate</div>
+        <div class="tile-delta">&uarr; from ~5% at v1</div>
+      </div>
+      <div class="tile-mini-grid">
+        <div class="tile-mini">
+          <span class="num">3</span>
+          <span class="lbl">Versions</span>
+        </div>
+        <div class="tile-mini">
+          <span class="num">3</span>
+          <span class="lbl">Exploited</span>
+        </div>
+        <div class="tile-mini">
+          <span class="num">40+ &rarr; 4&ndash;8</span>
+          <span class="lbl">Turns / Fight</span>
+        </div>
+        <div class="tile-mini">
+          <span class="num">~5% &rarr; 85%</span>
+          <span class="lbl">Win-Rate Lift</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <p>
-    The first thing you learn building an RL system is that your reward function
-    is everything. Get it wrong and the agent will find creative ways to maximize
-    reward without doing what you actually want.
+    I started with the cleanest, most ideologically pure reward function I
+    could write. It did not work. Neither did the second one. The third one
+    is what the agent trains on today. Each one broke in a different way, and
+    each failure taught me something specific about why the intuition &ldquo;just
+    reward the right outcome&rdquo; falls apart on long-horizon sequential
+    decisions. What follows is each reward function I shipped, what the agent
+    did with it, and what I replaced it with.
   </p>
 
-  <h2>Version 1: Win/Loss Only</h2>
   <p>
-    The simplest reward: +1 for winning, -1 for losing. The agent learned... nothing.
-    With a sparse reward signal and dozens of actions per episode, the credit assignment
-    problem was too hard. The agent couldn't figure out which of its 30+ actions in a
-    fight actually mattered.
+    The training loop runs in a patched Godot build of Slay the Spire 2, with
+    the agent making card-play and end-turn decisions inside actual combat
+    encounters. A typical fight has 20&ndash;30 actions before the combat
+    resolves, which turns out to matter a lot for the first version below.
   </p>
 
-  <h2>Adding HP Preservation</h2>
+  <div class="version-kicker">Version 1</div>
+  <section id="version-1" class="iter-card">
+    <h2>Win/loss terminal reward only</h2>
+    <div class="iter-grid">
+      <div class="panel what-i-did">
+        <div class="panel-label">What I did</div>
+        <ul>
+          <li><code>+1.0</code> on agent win</li>
+          <li><code>-1.0</code> on loss</li>
+          <li><code>0.0</code> for every intermediate action</li>
+        </ul>
+        <p>
+          The &ldquo;pure&rdquo; reward formulation &mdash; no hand-engineering
+          telling the agent how to play, just outcome. The appeal is unambiguity:
+          there is no policy bias baked into the reward. The agent has to figure
+          out what leads to wins.
+        </p>
+      </div>
+      <div class="panel what-broke">
+        <div class="panel-label">What went wrong</div>
+        <p>
+          The agent learned nothing useful after thousands of episodes. 98% of
+          early episodes returned <code>-1.0</code>; the policy converged to
+          essentially random card play. The gradient signal had to flow back
+          through 20&ndash;30 timesteps via a value function that did not yet
+          know anything, and there was no positive signal to anchor the
+          learning to.
+        </p>
+      </div>
+    </div>
+    <div class="result-chip"><span class="num">~0%</span><span class="lbl">useful behavior</span></div>
+  </section>
+
   <p>
-    I added a per-step reward based on HP changes. Lose HP? Small negative reward.
-    Block damage? No penalty. This gave the agent much denser signal and it started
-    learning to play defensive cards.
-  </p>
-  <p>
-    But then it learned to stall. If ending the turn meant the enemy attacks, the
-    agent preferred to... just not end its turn. It would play every card it could,
-    even useless ones, to delay the inevitable.
+    The problem was textbook credit assignment &mdash; the problem of
+    figuring out which of the 20&ndash;30 actions in an episode caused the
+    final outcome. A typical combat runs
+    20&ndash;30 actions before the terminal reward lands, and at the start of
+    training the agent wins maybe 1&ndash;2% of the time. 98% of gradient
+    updates were pushing against <code>-1.0</code> everywhere, with a value
+    function that had no idea which actions were actually causal and which were
+    incidental. The policy collapsed into randomness because that was the only
+    signal the value head could fit to. Dense reward was the obvious next
+    move &mdash; give the agent something to fit to on every step, not just at
+    the end of the fight, so the value function has a chance to develop a sense
+    of which states are better than which other states.
   </p>
 
-  <h2>The Turn Penalty</h2>
+  <div class="version-kicker">Version 2</div>
+  <section id="version-2" class="iter-card">
+    <h2>Per-step HP preservation</h2>
+    <div class="iter-grid">
+      <div class="panel what-i-did">
+        <div class="panel-label">What I did</div>
+        <ul>
+          <li>Lose HP &rarr; small negative, proportional to HP lost</li>
+          <li>Block incoming damage &rarr; <code>0.0</code></li>
+          <li>Enemy dies &rarr; small positive, proportional to enemy HP</li>
+        </ul>
+        <p>
+          The idea: give the agent a signal on every step about something it
+          actually controls. Defensive plays get rewarded, damaging hits get
+          penalized, kills get credit. The per-step density fixes credit
+          assignment &mdash; now the value function has something to fit to
+          between terminal rewards.
+        </p>
+      </div>
+      <div class="panel what-broke">
+        <div class="panel-label">What went wrong</div>
+        <p>
+          The agent discovered a stalling exploit. Ending a turn in Slay the
+          Spire 2 means the enemy attacks, and attacks cost HP. The
+          HP-preservation reward made the agent deeply averse to ending turns
+          at all. It learned to play out its whole hand &mdash; useless cards
+          included &mdash; just to delay the end of turn.
+        </p>
+      </div>
+    </div>
+    <div class="result-chip"><span class="num">40&ndash;50%</span><span class="lbl">but stalling</span></div>
+  </section>
+
   <p>
-    Adding a small penalty for each turn incentivized the agent to finish fights
-    quickly. Combined with the HP reward, it learned to balance aggression with
-    defense — play damage cards when safe, block when the enemy is about to hit hard.
+    Win rate climbed from random to around 40&ndash;50% on Stage 0. Episode
+    length climbed with it. Fights that a reasonable player finishes in
+    5&ndash;6 turns were running 40+. The agent was technically maximizing its
+    per-turn reward &mdash; it was taking less damage per turn than a normal
+    player would &mdash; but the fights dragged on so long that debuffs
+    accumulated and it lost via attrition. This is textbook reward hacking: the
+    reward function said &ldquo;minimize HP loss per step,&rdquo; and the stalling
+    loop does minimize HP loss per step. The reward just did not say
+    &ldquo;minimize HP loss per fight.&rdquo; Time was a free resource and the
+    agent exploited it.
   </p>
 
-  <p><em>This is a placeholder post. Replace with your actual content.</em></p>
+  <p>
+    The signal that v2 was broken did not come from the win-rate graph
+    &mdash; which actually looked plausible for a while, climbing from random
+    into the 40s &mdash; it came from the episode-length graph, which started
+    creeping and then spiking. That was useful to notice because it suggested
+    the fix before I had even fully diagnosed the exploit: if episodes are
+    long, make episodes expensive.
+  </p>
+
+  <div class="version-kicker">Version 3</div>
+  <section id="version-3" class="iter-card">
+    <h2>Step damage + turn penalty + terminal</h2>
+    <div class="iter-grid">
+      <div class="panel what-i-did">
+        <div class="panel-label">What I did</div>
+        <ul>
+          <li>Step reward &mdash; <code>-(damage_taken / max_hp) * 2.0</code> on every transition (see <code>reward.py::step_reward</code>); always <code>&le; 0</code></li>
+          <li>Turn penalty &mdash; <code>-0.01</code> per turn end (<code>reward.py::TURN_PENALTY</code>)</li>
+          <li>Terminal &mdash; win scales with HP remaining: <code>+1.0 + hp_remaining/max_hp</code> (range <code>+1.0</code> to <code>+2.0</code>); loss is <code>-1.0</code></li>
+        </ul>
+        <p>
+          The turn penalty is small enough that the agent still prefers playing
+          defense over taking damage, but large enough that indefinitely
+          stalling becomes net-negative. It has to win efficiently, not just
+          survive.
+        </p>
+      </div>
+      <div class="panel what-worked">
+        <div class="panel-label">What worked</div>
+        <p>
+          Win rate climbed to 70&ndash;85% on Stage 0 and the agent stopped
+          stalling. Episode length dropped from 40+ turns to the 4&ndash;8 turn
+          range a human player would see.
+        </p>
+      </div>
+    </div>
+    <div class="result-chip"><span class="num">70&ndash;85%</span><span class="lbl">Stage&nbsp;0 &middot; shipped</span></div>
+  </section>
+
+  <h2 id="next-time">What I&rsquo;d do first next time</h2>
+  <p>
+    Start with the dense + terminal hybrid from day one. Three components
+    together:
+  </p>
+  <ol>
+    <li>Small step-level rewards that encode <em>immediate</em> feedback (HP damage, blocking, enemy kills).</li>
+    <li>A small penalty per turn to discourage stalling.</li>
+    <li>A terminal reward for win/loss.</li>
+  </ol>
+
+  <p>
+    The insight I lacked initially: <strong>pure outcome-based rewards do not
+    work for sequential decision problems with long horizons unless you already
+    have a decent value function.</strong> The common advice that &ldquo;you
+    should let the agent figure it out from minimal reward&rdquo; is a trap at
+    this problem size. Every real RL system I have read about in production
+    uses some form of reward shaping &mdash; the only debate is how much.
+  </p>
+
+  <p>
+    <strong>Anticipate reward hacking.</strong> When you add any reward
+    component, immediately ask: how could an adversarial agent exploit this?
+    The HP-preservation reward was exploitable because it did not account for
+    the passage of time. If I had red-teamed it mentally for five minutes
+    before training, the stalling loop would have been obvious. The agent was
+    not being clever; the reward was being incomplete.
+  </p>
+
+  <p>
+    <strong>Monitor episode length as a first-class metric.</strong> Along with
+    win rate and reward. Wildly long episodes are almost always a sign of
+    reward exploitation or broken termination conditions. It was the
+    episode-length graph that first told me v2 was broken &mdash; win rate
+    looked fine for a while.
+  </p>
+
+  <p>
+    <strong>Keep iteration cycles short.</strong> Each of these reward
+    functions trained for an hour or two before I killed it. That was
+    deliberate. There is a real temptation, when you have committed a few
+    hours of GPU time to a run, to let it keep going to justify the sunk cost.
+    I try to resist that. If the reward is broken, more compute makes it more
+    broken, not less.
+  </p>
+
+  <h2 id="technical-details">Technical details</h2>
+  <ul>
+    <li><strong>Framework:</strong> PPO (Proximal Policy Optimization)</li>
+    <li><strong>Step reward:</strong> <code>-(damage_taken / max_hp) * 2.0</code> per transition &mdash; always <code>&le; 0</code>, no positive step component (<code>reward.py::step_reward</code>)</li>
+    <li><strong>Turn penalty:</strong> <code>-0.01</code> per turn end (<code>reward.py::TURN_PENALTY</code>)</li>
+    <li><strong>Terminal:</strong> win <code>+1.0 + hp_remaining/max_hp</code> (range <code>+1.0</code> to <code>+2.0</code>), loss <code>-1.0</code> &mdash; so terminal sits in <code>[-1.0, +2.0]</code></li>
+    <li><strong>Discount factor:</strong> <code>&gamma; = 0.99</code></li>
+    <li><strong>GAE (generalized advantage estimation) lambda:</strong> <code>0.95</code></li>
+  </ul>
+
+  <h2 id="key-takeaways">Key takeaways</h2>
+  <ol>
+    <li><strong>Dense reward beats sparse reward</strong> for long-horizon tasks with random initial policies. Credit assignment is too hard with only a terminal reward; the value function cannot bootstrap itself out of the cold start.</li>
+    <li><strong>Every reward signal can be exploited.</strong> Stare at your reward function and ask what a lazy, greedy agent would do to maximize it. Whatever loophole you find, the agent will find it faster.</li>
+    <li><strong>Watch episode length.</strong> Regressions in episode length often reveal reward hacking before win rate does. It is the earliest public signal that the agent has found a degenerate optimum.</li>
+    <li><strong>Iterate fast, measure everything.</strong> Each version trained for only an hour or two before I decided it was broken. The iteration loop matters more than per-iteration perfection &mdash; you learn more from three one-hour runs than from one carefully-tuned six-hour run. The mistakes the first run makes are rarely the mistakes the second run needs to make for you to learn the thing.</li>
+    <li><strong>The reward is not the code that computes it; it is the policy it produces.</strong> The only real test of a reward function is what the agent does under it. The prose version of the reward &mdash; what I thought I was asking for &mdash; is almost always more forgiving than the actual math version the agent gets to see.</li>
+  </ol>
 </Post>

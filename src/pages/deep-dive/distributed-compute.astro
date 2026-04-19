@@ -1,0 +1,402 @@
+---
+import Post from '../../layouts/Post.astro';
+
+const headings = [
+  { text: 'The fleet today',        id: 'the-fleet-today' },
+  { text: 'The configs',            id: 'the-configs' },
+  { text: 'The wire',               id: 'the-wire' },
+  { text: 'Episodes up',            id: 'episodes-up' },
+  { text: 'Weights down',           id: 'weights-down' },
+  { text: 'What the fleet produces', id: 'what-the-fleet-produces' },
+  { text: 'Rolling out changes',    id: 'rolling-out' },
+  { text: 'Takeaways',              id: 'takeaways' },
+];
+---
+<Post
+  title="Distributed compute — eleven laptops, one TCP port, and a scheduled task"
+  date="2026-04-19"
+  activeTab="deep-dive"
+  headings={headings}
+>
+  <p class="deck">
+    Eleven Windows laptops run an actor proxy each. One PPO learner runs on
+    my desk. They talk over a single TCP port on the home LAN. This post is
+    what the compute actually looks like today — numbers, configs, and the
+    wire.
+  </p>
+
+  <div class="fleet-kicker">The fleet today · 11 machines · ~175 cpm</div>
+  <div class="fleet-grid">
+    <div class="fleet-tile hot">
+      <span class="ft-name">stsBot0</span>
+      <span class="ft-host">10.0.0.50</span>
+      <span class="ft-cpm">25 cpm</span>
+    </div>
+    <div class="fleet-tile warm">
+      <span class="ft-name">stsBot1</span>
+      <span class="ft-host">10.0.0.54</span>
+      <span class="ft-cpm">14 cpm</span>
+    </div>
+    <div class="fleet-tile warm">
+      <span class="ft-name">stsBot2</span>
+      <span class="ft-host">10.0.0.73</span>
+      <span class="ft-cpm">14 cpm</span>
+    </div>
+    <div class="fleet-tile cold">
+      <span class="ft-name">stsBot3</span>
+      <span class="ft-host">10.0.0.77</span>
+      <span class="ft-cpm">— cpm · stale 21 min</span>
+    </div>
+    <div class="fleet-tile hot">
+      <span class="ft-name">stsBot4</span>
+      <span class="ft-host">10.0.0.70</span>
+      <span class="ft-cpm">27 cpm</span>
+    </div>
+    <div class="fleet-tile cold">
+      <span class="ft-name">stsBot5</span>
+      <span class="ft-host">10.0.0.69</span>
+      <span class="ft-cpm">— cpm · fresh boot</span>
+    </div>
+    <div class="fleet-tile hot">
+      <span class="ft-name">stsBot6</span>
+      <span class="ft-host">10.0.0.64</span>
+      <span class="ft-cpm">20 cpm</span>
+    </div>
+    <div class="fleet-tile hot">
+      <span class="ft-name">stsBot7</span>
+      <span class="ft-host">10.0.0.84</span>
+      <span class="ft-cpm">37 cpm · top</span>
+    </div>
+    <div class="fleet-tile offline">
+      <span class="ft-name">stsBot8</span>
+      <span class="ft-host">10.0.0.60</span>
+      <span class="ft-cpm">— cpm · offline ~11h</span>
+    </div>
+    <div class="fleet-tile warm">
+      <span class="ft-name">stsBot9</span>
+      <span class="ft-host">10.0.0.75</span>
+      <span class="ft-cpm">13 cpm</span>
+    </div>
+    <div class="fleet-tile hot">
+      <span class="ft-name">stsBot10</span>
+      <span class="ft-host">10.0.0.82</span>
+      <span class="ft-cpm">25 cpm</span>
+    </div>
+    <div class="fleet-tile placeholder" aria-hidden="true"></div>
+  </div>
+
+  <p>
+    Eleven laptops. Ten connected. Eight producing. One PPO learner, one
+    TCP port, one restart script. That's the whole distributed surface.
+  </p>
+  <p>
+    The sibling article over on
+    <a href={`${import.meta.env.BASE_URL}learned/distributed-deployment/`}>/learned/distributed-deployment</a>
+    covers how I got the fleet to stay up at all — the schtasks trick,
+    the kill-by-window-title pattern, the three per-worker incidents I
+    kept running into. This post takes the fleet as given and walks
+    through what it's actually doing right now: the configs on each side
+    of the wire, the cadence that keeps them in sync, and the numbers
+    coming out of it.
+  </p>
+
+  <h2 id="the-fleet-today">The fleet today</h2>
+  <p>
+    Each tile above is one Windows laptop running
+    <code>actor_proxy.py</code> (<code>src/bot/actor_proxy.py</code>)
+    against the learner on my desk. The IPs are static
+    <code>name=ip</code> entries from <code>workers.txt</code> — no
+    dynamic discovery, no service registry:
+  </p>
+  <pre><code>{`stsBot0=10.0.0.50
+stsBot1=10.0.0.54
+stsBot2=10.0.0.73
+...
+stsBot10=10.0.0.82`}</code></pre>
+  <p>
+    Eleven lines. The file's the truth; <code>restart_workers.bat</code>
+    reads it when I want to roll out a change, and each worker's
+    <code>workers.txt.example</code>-derived copy tells it where the
+    learner lives.
+  </p>
+  <p>
+    The CPM numbers on the tiles come from <code>data/workers.json</code>,
+    a file the learner rewrites every five seconds. Each entry is one
+    worker's current state: <code>ip</code>, <code>connected</code>,
+    <code>episodes_total</code>, <code>combats_per_min</code>,
+    <code>last_seen_s</code>. A snapshot from a moment earlier today:
+  </p>
+  <pre><code>{`[
+  {"ip": "10.0.0.50", "connected": true,  "episodes_total": 33622, "combats_per_min": 25, "last_seen_s": 1.0},
+  {"ip": "10.0.0.54", "connected": true,  "episodes_total": 15793, "combats_per_min": 14, "last_seen_s": 3.0},
+  {"ip": "10.0.0.77", "connected": true,  "episodes_total": 34687, "combats_per_min": 0,  "last_seen_s": 1263.0},
+  {"ip": "10.0.0.70", "connected": true,  "episodes_total": 41194, "combats_per_min": 27, "last_seen_s": 2.0},
+  {"ip": "10.0.0.84", "connected": true,  "episodes_total": 39600, "combats_per_min": 37, "last_seen_s": 1.0},
+  {"ip": "10.0.0.60", "connected": false, "episodes_total":  7217, "combats_per_min": 0,  "last_seen_s": 40049.0}
+]`}</code></pre>
+  <p>
+    Three workers sit at zero CPM in that snapshot. stsBot3 is connected
+    but hasn't pushed an episode in 1263 seconds — about twenty-one
+    minutes — so its 60-second rolling CPM has decayed to zero. stsBot5
+    booted fresh from <code>restart_workers.bat</code> not long before
+    and only has 420 episodes on the counter. stsBot8 has been
+    disconnected for 40,049 seconds, which is roughly eleven hours — I
+    shut its lid yesterday and forgot. The other eight are producing.
+  </p>
+  <p>Fleet CPM at that moment: 175. Fleet episodes-to-date: about 259,000.</p>
+
+  <h2 id="the-configs">The configs that make this go</h2>
+  <p>
+    Three files set the cadence of the whole system. Two live on the
+    worker side, one on the learner.
+  </p>
+  <div class="cfg-table">
+    <section class="cfg-card">
+      <header class="cfg-header">worker_config.toml</header>
+<pre><code>{`[learner]
+host = "127.0.0.1"
+port = 9998
+
+[actor]
+game_port = 9999
+headless  = true
+instances = 1`}</code></pre>
+    </section>
+    <section class="cfg-card">
+      <header class="cfg-header">actor_proxy.py · constants</header>
+<pre><code>{`WEIGHT_PULL_EVERY = 16
+_learner_host     = "127.0.0.1"
+_learner_port     = 9998`}</code></pre>
+    </section>
+    <section class="cfg-card">
+      <header class="cfg-header">learner.py · hyperparameters</header>
+<pre><code>{`GAMMA               = 0.99
+GAE_LAMBDA          = 0.95
+CLIP_EPS            = 0.2
+VALUE_COEF          = 0.5
+ENTROPY_COEF        = 0.04
+LR                  = 3e-4
+MAX_GRAD_NORM       = 0.5
+
+EPISODES_PER_UPDATE = 16
+PPO_EPOCHS          = 4
+MINIBATCH_SIZE      = 64`}</code></pre>
+    </section>
+  </div>
+  <p>
+    <code>learner.host</code> is the one value that changes per worker,
+    because on my desk the learner is loopback but on a worker it's the
+    LAN address of my desk machine. <code>actor.instances</code> is how
+    many headless game clients the proxy spawns;
+    <code>actor.game_port</code> is the port the proxy listens on for
+    those clients. Nothing ever reaches the rest of the network from that
+    port — it's worker-local.
+  </p>
+  <p>
+    <code>WEIGHT_PULL_EVERY</code> is the cadence that matters most.
+    Every sixteen completed episodes, the proxy blocks on a
+    <code>pull_weights()</code> call and loads the updated policy state
+    dict. Between pulls, it runs inference with whatever weights it has
+    locally.
+  </p>
+  <p>
+    The interesting coincidence is <code>EPISODES_PER_UPDATE</code> and
+    <code>WEIGHT_PULL_EVERY</code> both being sixteen. The learner waits
+    for sixteen new episodes to show up on its rollout queue, runs four
+    PPO epochs over them in minibatches of sixty-four, then the next
+    actor that asks for weights gets the freshly updated policy. Across
+    eleven workers producing at mixed rates, some actors will pull
+    weights several updates behind and some will be right on the
+    leading edge. That's fine — PPO's clipped objective is what keeps
+    the stale-policy rollouts usable.
+  </p>
+
+  <h2 id="the-wire">The wire</h2>
+  <p>One TCP port, 9998. That's the whole distributed surface.</p>
+  <div class="chain-diagram">
+    <div class="cd-caption">Data flow · actor ↔ learner</div>
+<pre>{`   11x actor_proxy.py     (workers, :9999 to their local games)
+            │  episodes (one per completed combat)
+            ▼
+       TCP `}<span class="cd-weird">:9998</span>{`          `}<span class="cd-note">◄── [the only distributed port]</span>{`
+            │  weights (pulled every 16 episodes)
+            ▼
+         learner.py       (host PC, single GPU)`}</pre>
+  </div>
+  <p>
+    No message broker, no Redis, no gRPC, no service mesh. Each actor
+    opens one long-lived TCP socket to the learner on startup
+    (<code>_connect_learner()</code>, <code>actor_proxy.py:85</code>),
+    serializes messages with the in-house <code>protocol.py</code>
+    framing, and pushes one episode per completed combat.
+  </p>
+
+  <h3 id="episodes-up">Episodes up</h3>
+  <p>
+    Inside <code>handle_connection()</code>
+    (<code>actor_proxy.py:199</code>), after each combat ends, the proxy
+    builds a dict of
+    <code>&#123;transitions, summary, completed_at&#125;</code> and calls
+    <code>push_rollout(ep_dict)</code> (<code>actor_proxy.py:113</code>).
+    That function grabs <code>_learner_lock</code> — the mutex that
+    serializes all actor↔learner traffic on the shared socket — sends
+    the message, and blocks on the learner's ack before releasing the
+    lock. The ack carries the learner's current update count, which the
+    proxy uses to decide whether it's time to pull weights.
+  </p>
+  <p>
+    The reason the mutex matters: a single proxy with multiple game
+    threads pushes rollouts concurrently. Without the lock, two
+    <code>send_msg</code> calls would interleave on the wire and the
+    framing would fall apart. Lock, send, recv, unlock. One request at
+    a time.
+  </p>
+
+  <h3 id="weights-down">Weights down</h3>
+  <p>
+    Every sixteenth completed episode, <code>pull_weights()</code>
+    (<code>actor_proxy.py:135</code>) asks the learner for the current
+    state dict. The learner replies with a payload that includes four
+    vocab token lists (card, enemy, relic, power — these grow over time
+    as new entities show up in training), the pickled state dict bytes,
+    and the current <code>stage_config</code>. The proxy resizes its
+    local embeddings to match the learner's vocabs
+    (<code>policy.resize_embeddings</code>, line 164), loads the state
+    dict, and writes out a fresh <code>stage.json</code> for the C# mod
+    to pick up.
+  </p>
+  <p>
+    The weight transfer is the biggest message on the wire — a full
+    state dict is in the megabytes — but it only happens every sixteen
+    episodes per worker. Eleven workers averaging ~16 CPM each means a
+    weight pull every minute or so per worker, staggered across
+    machines. Aggregate learner-side weight-serve load is small.
+  </p>
+
+  <h2 id="what-the-fleet-produces">What the fleet produces</h2>
+  <p>Eleven rows, sorted top to bottom by current CPM:</p>
+  <div class="cpm-bars">
+    <div class="cpm-row"><span class="cpm-label">stsBot7</span><span class="cpm-bar"><span class="cpm-fill hot" style="width: 92%"></span></span><span class="cpm-value">37</span></div>
+    <div class="cpm-row"><span class="cpm-label">stsBot4</span><span class="cpm-bar"><span class="cpm-fill hot" style="width: 68%"></span></span><span class="cpm-value">27</span></div>
+    <div class="cpm-row"><span class="cpm-label">stsBot0</span><span class="cpm-bar"><span class="cpm-fill hot" style="width: 62%"></span></span><span class="cpm-value">25</span></div>
+    <div class="cpm-row"><span class="cpm-label">stsBot10</span><span class="cpm-bar"><span class="cpm-fill hot" style="width: 62%"></span></span><span class="cpm-value">25</span></div>
+    <div class="cpm-row"><span class="cpm-label">stsBot6</span><span class="cpm-bar"><span class="cpm-fill hot" style="width: 50%"></span></span><span class="cpm-value">20</span></div>
+    <div class="cpm-row"><span class="cpm-label">stsBot1</span><span class="cpm-bar"><span class="cpm-fill warm" style="width: 35%"></span></span><span class="cpm-value">14</span></div>
+    <div class="cpm-row"><span class="cpm-label">stsBot2</span><span class="cpm-bar"><span class="cpm-fill warm" style="width: 35%"></span></span><span class="cpm-value">14</span></div>
+    <div class="cpm-row"><span class="cpm-label">stsBot9</span><span class="cpm-bar"><span class="cpm-fill warm" style="width: 32%"></span></span><span class="cpm-value">13</span></div>
+    <div class="cpm-row"><span class="cpm-label">stsBot3</span><span class="cpm-bar"><span class="cpm-fill cold" style="width: 2%"></span></span><span class="cpm-value">0 · stale 21m</span></div>
+    <div class="cpm-row"><span class="cpm-label">stsBot5</span><span class="cpm-bar"><span class="cpm-fill cold" style="width: 2%"></span></span><span class="cpm-value">0 · fresh boot</span></div>
+    <div class="cpm-row"><span class="cpm-label">stsBot8</span><span class="cpm-bar"><span class="cpm-fill cold" style="width: 2%"></span></span><span class="cpm-value">0 · offline ~11h</span></div>
+  </div>
+  <p class="cpm-caption">fleet ≈ 175 cpm · snapshot from <code>data/workers.json</code></p>
+  <p>
+    A few things to read off this. stsBot7 is the fastest laptop I've
+    got and routinely runs at the top of the leaderboard. It's a
+    desktop-replacement with better thermals than the rest — the CPM
+    difference is almost entirely thermal. stsBot4, stsBot0, and
+    stsBot10 are second-tier machines that hover in the mid-20s.
+    stsBot1, stsBot2, and stsBot9 are older laptops that throttle
+    harder under sustained load and sit in the low teens.
+  </p>
+  <p>
+    The three zeros each come from a different state. stsBot3 was
+    connected at snapshot time but hadn't pushed an episode in over
+    twenty minutes. Almost certainly the game UI got stuck on a
+    deck-selection screen the mod couldn't auto-advance; the proxy is
+    waiting on a combat that isn't coming. stsBot5 had just restarted
+    and only logged 420 episodes before the snapshot, which is fewer
+    than one PPO update's worth. stsBot8 is a laptop whose lid I closed
+    the night before and didn't reopen; <code>connected=false</code>
+    flipped once the learner's worker-stats deadline passed.
+  </p>
+  <p>
+    <code>combats_per_min</code> itself is a rolling 60-second window on
+    timestamps, stored in a <code>deque(maxlen=200)</code> per worker
+    (<code>WorkerStats._timestamps</code>, <code>learner.py:155</code>).
+    The learner writes the worker table out to
+    <code>data/workers.json</code> every five seconds
+    (<code>_write_workers_loop</code>, <code>learner.py:181</code>), so
+    the on-disk CPM is never more than five seconds stale.
+  </p>
+
+  <h2 id="rolling-out">Rolling out changes</h2>
+  <p>
+    One script handles fleet-wide code updates:
+    <code>scripts/main/restart_workers.bat</code>. It reads
+    <code>workers.txt</code>, iterates, and for each worker runs:
+  </p>
+  <ol>
+    <li><code>taskkill</code> by window title to stop the running proxy and games</li>
+    <li><code>git fetch origin &amp;&amp; git reset --hard origin/main</code> to pull fresh code</li>
+    <li><code>schtasks /create /tn STS2Worker ...</code> then <code>/run</code> then <code>/delete</code> to re-launch <code>run_worker.bat</code> in a detached session</li>
+  </ol>
+  <p>
+    The schtasks trick is the weird one and is covered in the
+    retrospective. The relevant line from
+    <code>restart_workers.bat:82</code>:
+  </p>
+  <pre><code>{`ssh %SSH_USER%@!WIP_%%i! "schtasks /create /tn STS2Worker /tr \\"cmd.exe /c cd /d %REMOTE_REPO%\\scripts\\worker ^& run_worker.bat\\" /sc once /st 00:00 /f >nul 2>&1 && schtasks /run /tn STS2Worker >nul 2>&1 && schtasks /delete /tn STS2Worker /f >nul 2>&1"`}</code></pre>
+  <p>
+    Sequential, one worker at a time. Eleven workers take about a
+    minute end-to-end. The loop is not parallelized — the errors are
+    easier to read one at a time, and for a home LAN the serial cost is
+    cheap enough not to matter.
+  </p>
+  <p>
+    On each worker, <code>run_worker.bat</code>
+    (<code>scripts/worker/run_worker.bat</code>) reads
+    <code>worker_config.toml</code>, installs Python dependencies,
+    launches the actor proxy in one cmd window (titled
+    <code>STS2 Actor Proxy</code>), and then launches
+    <code>actor.instances</code> headless game clients spaced fifteen
+    seconds apart. The fifteen-second spacing avoids a thundering-herd
+    race on game startup.
+  </p>
+
+  <h2 id="takeaways">Takeaways</h2>
+  <div class="takeaways-grid">
+    <div class="tg-tile">
+      <span class="tg-n">01</span>
+      <span class="tg-lbl"><strong>One learner, N actor proxies over one TCP port.</strong> The port is the whole interface.</span>
+    </div>
+    <div class="tg-tile">
+      <span class="tg-n">02</span>
+      <span class="tg-lbl"><strong><code>WEIGHT_PULL_EVERY=16</code> == <code>EPISODES_PER_UPDATE=16</code>.</strong> PPO's clip handles mild staleness.</span>
+    </div>
+    <div class="tg-tile">
+      <span class="tg-n">03</span>
+      <span class="tg-lbl"><strong><code>workers.txt</code> is the fleet registry.</strong> A flat <code>name=ip</code> file.</span>
+    </div>
+    <div class="tg-tile">
+      <span class="tg-n">04</span>
+      <span class="tg-lbl"><strong><code>data/workers.json</code> refreshes every 5s.</strong> Per-worker CPM, episodes, connected flag.</span>
+    </div>
+    <div class="tg-tile">
+      <span class="tg-n">05</span>
+      <span class="tg-lbl"><strong><code>restart_workers.bat</code> is the rollout mechanism.</strong> Sequential SSH + schtasks per machine.</span>
+    </div>
+  </div>
+
+  <h3>Technical details</h3>
+  <ul>
+    <li><strong>Workers:</strong> 11 Windows laptops, <code>stsBot0</code>..<code>stsBot10</code>, static IPs on <code>10.0.0.0/24</code></li>
+    <li><strong>Learner:</strong> single GPU on the host PC, TCP listener on <code>0.0.0.0:9998</code></li>
+    <li><strong>Actor-side games:</strong> <code>worker_config.toml</code> sets <code>instances</code> per worker (1 to 4 depending on thermals)</li>
+    <li><strong>Protocol:</strong> length-prefixed messages over a long-lived TCP socket, one mutex-protected request at a time per actor</li>
+    <li><strong>Telemetry cadence:</strong> <code>WorkerStats.combats_per_min</code> computed from a 60-second rolling window; <code>data/workers.json</code> rewritten every 5 s</li>
+    <li><strong>Rollout script:</strong> <code>scripts/main/restart_workers.bat</code> — reads <code>workers.txt</code>, SSH + <code>schtasks</code> per machine, sequential</li>
+  </ul>
+
+  <p>
+    The whole distributed stack for this project is smaller than the
+    file that describes the reward function. One script, one port, one
+    config file per side, one scheduled task per rollout. Most of
+    what's interesting about this setup is the fact that the
+    interesting part lives elsewhere — the learner's PPO loop, the
+    encoder, the reward shaping. For the constraints this project runs
+    under — eleven personal laptops on a home LAN, one learner on my
+    desk — the compute layer's job is to get episodes into and weights
+    out of the learner, and anything more structural than that would
+    be ceremony over a TCP socket.
+  </p>
+</Post>

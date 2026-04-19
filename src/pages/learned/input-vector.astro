@@ -1,0 +1,367 @@
+---
+import Post from '../../layouts/Post.astro';
+
+const headings = [
+  { text: 'Before / after', id: 'before-after' },
+  { text: 'The vector as a bridge', id: 'the-vector-as-a-bridge' },
+  { text: 'Trap 1 · One-hot', id: 'trap-1-one-hot' },
+  { text: '583 revealed', id: '583-revealed' },
+  { text: 'Vocabulary growth', id: 'vocabulary-growth' },
+  { text: 'Trap 2 · Silent bounds', id: 'trap-2-silent-bounds' },
+  { text: 'Takeaways', id: 'takeaways' },
+];
+---
+<Post
+  title="Input Vector Design — One-Hot Was a Trap"
+  date="2026-04-19"
+  activeTab="learned"
+  headings={headings}
+>
+  <p class="deck">
+    How the input vector got from ~1500 dimensions to 583, and how I found the
+    second trap by accident — not by design.
+  </p>
+
+  {/* Opening compact diptych hero — v6 Trap-Gated Payoff */}
+  <div class="diptych-wrap" id="before-after">
+    <div class="diptych">
+      <div class="dpanel bad">
+        <div class="d-label">Before · one-hot</div>
+        <h3>Per-slot one-hots for cards and enemies, bitmaps for relics and powers.</h3>
+        <ul>
+          <li>10 hand slots × 80-card one-hot = <strong>800 dims</strong></li>
+          <li>No semantic link between Strike and Strike+</li>
+          <li>Every curriculum unlock regressed the policy</li>
+        </ul>
+        <div class="d-stat">
+          <span class="d-num">~1500</span>
+          <span class="d-ntext">Dimensions · bloated<br/>— no generalization</span>
+        </div>
+      </div>
+
+      <div class="dpanel good">
+        <div class="d-label">After · embeddings</div>
+        <h3>Learned <code>nn.Embedding</code> per entity, mean-pooled unordered collections.</h3>
+        <ul>
+          <li>Cards 16d, enemies 16d, relics/powers 8d</li>
+          <li>Similar cards cluster in embedding space</li>
+          <li>Curriculum additions calibrate in a few hundred ep.</li>
+        </ul>
+        <div class="d-stat">
+          <span class="d-num">583</span>
+          <span class="d-ntext">Dimensions · tighter<br/>— faster, generalizes</span>
+        </div>
+      </div>
+    </div>
+    <div class="diptych-arrow" aria-hidden="true">→</div>
+  </div>
+  <p class="orienting">
+    Two traps sat inside this design. One I spotted, one I didn't — for three
+    iterations.
+  </p>
+
+  <h2 id="the-vector-as-a-bridge">The vector as a bridge</h2>
+  <p>
+    Before any of the interesting learning happens, there's a plumbing problem.
+    The game speaks in objects and references — a Card has a cost and a type
+    and a keyword list, an Enemy has intents and powers, a combat room has a
+    draw pile and a discard pile and a player whose HP is at some number. The
+    network speaks in floats. Somewhere between the two, I had to pick a shape
+    for the input tensor and commit to it. Everything else — policy loss,
+    value targets, the curriculum, the reward function — all sits on top of
+    the decisions I made at that interface.
+  </p>
+  <p>
+    That's the part I kept underestimating. I thought of the input vector as a
+    low-stakes choice I'd iterate on once the network was training. It turns
+    out encoding choice determines how fast the network trains, how much
+    memory each batch costs, and whether similar entities look similar to the
+    policy at all. Pick something that makes every card a stranger to every
+    other card, and the network spends its capacity relearning that Strike
+    and Strike+ are related. Pick something that clips the top of the numeric
+    range silently, and the network stops being able to tell "bad" from
+    "catastrophic." Both of those happened. Only one of them announced itself.
+  </p>
+
+  <h2 id="trap-1-one-hot">Trap 1 — one-hot had no semantic generalization</h2>
+  <p>
+    The first pass was one-hot everything, because one-hot is the encoding
+    every RL tutorial uses for discrete categorical data. A card in hand was
+    an 80-dim one-hot over the full card pool, repeated across ten slots —
+    800 dimensions right there. Enemies were one-hots over the ~15-entity
+    enemy pool across six slots. Relics were a 30-dim bitmap. Powers were a
+    40-dim bitmap. With scalars on top (HP, block, energy, turn, debuffs, a
+    handful of action counters), the input vector cleared 1500 dimensions.
+    The first fully-connected layer was enormous and the forward pass was
+    sluggish, but I told myself that was just the cost of doing business.
+  </p>
+  <p>
+    The cost I didn't clock was the semantic one. One-hot gives every card an
+    independent column. That sounds fine in the abstract. What it means in
+    practice is that the network has no structural reason to treat Strike and
+    Strike+ as related, no structural reason to treat Defend and Neutralize
+    as different kinds of things, no structural reason to group the poison
+    cards together. It has to discover all of that from the gradient signal,
+    one card at a time.
+  </p>
+  <p>
+    Curriculum made this worse on a schedule. Stage 3 introduces poison cards.
+    Stage 5 introduces draw cards. Until each stage unlocked, the one-hot
+    column for those cards had been zero for thousands of episodes — the
+    weights pointing into it were essentially random. On the first episode a
+    new card appeared, the network was reading noise. I kept noticing the
+    policy regressing briefly at every stage transition and rationalizing it
+    as "curricula are just bumpy." They're much less bumpy when similar cards
+    share representation.
+  </p>
+
+  <div class="trap onehot">
+    <span class="trap-severity">Trap · Bloat</span>
+    <span class="trap-headline">One-hot encoding treats every card as completely unrelated to every other card.</span>
+    <p>
+      The one-hot slot for that card had been zero for thousands of episodes.
+      When the curriculum unlocked it, the weights on that slot were
+      effectively random — the agent had to learn the new card's effect from
+      scratch, with no help from similar cards.
+    </p>
+    <span class="trap-fix"><strong>FIX →</strong> <code>replace one-hot with nn.Embedding(vocab, 16)</code></span>
+  </div>
+
+  {/* Payoff hero: reveal-kicker + proportional .vector-decomp bar */}
+  <span class="reveal-kicker" id="583-revealed">What the 583 actually looks like</span>
+  <div class="vector-decomp" role="img" aria-label="Proportional breakdown of the 583-dim input vector: 18 player, 270 hand, 252 enemies, 24 piles, 10 relics, 9 powers">
+    <div class="vec-segment player"  style="flex: 18 0 0">
+      <span class="vec-num">18</span><span class="vec-lbl">Player</span>
+    </div>
+    <div class="vec-segment hand"    style="flex: 270 0 0">
+      <span class="vec-num">270</span><span class="vec-lbl">Hand · 10 × (16d + 11)</span>
+    </div>
+    <div class="vec-segment enemies" style="flex: 252 0 0">
+      <span class="vec-num">252</span><span class="vec-lbl">Enemies · 6 × (16d + scalars)</span>
+    </div>
+    <div class="vec-segment piles"   style="flex: 24 0 0">
+      <span class="vec-num">24</span><span class="vec-lbl">Piles · pooled</span>
+    </div>
+    <div class="vec-segment relics"  style="flex: 10 0 0">
+      <span class="vec-num">10</span><span class="vec-lbl">Relics</span>
+    </div>
+    <div class="vec-segment powers"  style="flex: 9 0 0">
+      <span class="vec-num">9</span><span class="vec-lbl">Powers</span>
+    </div>
+  </div>
+  <p class="vec-caption-bottom">
+    Same game state, less than 40% the width. Hand and enemies fill nearly
+    90% of the budget.
+  </p>
+
+  <p>
+    <strong>Player (18).</strong> The scalar block — HP, block, energy, turn
+    number, a handful of debuff stacks, a small set of action counters. No
+    embeddings here; these are just numbers, normalized and clipped. This
+    part of the vector didn't change between the one-hot version and the
+    embedding version, but it's worth naming anyway because this is where
+    Trap 2 was hiding, in the constants I divided each of these scalars by.
+  </p>
+  <p>
+    <strong>Hand (270).</strong> Ten slots, each containing a 16-dimensional
+    card embedding plus eleven scalar extras — cost, type, keyword flags, an
+    upgraded marker. The embedding table is <code>nn.Embedding(vocab_size, 16)</code>
+    and it's trained end-to-end with the policy. Strike and Strike+ end up in
+    neighboring parts of embedding space without me asking for that; poison
+    cards cluster; defense cards form their own region. I didn't design for
+    that, and I can't fully predict it from the gradient math, but it falls
+    out because cards with similar effects appear in similar contexts and
+    benefit from similar value estimates.
+  </p>
+  <p>
+    <strong>Enemies (252).</strong> Six slots, each a 16-dim embedding plus
+    seventeen scalars (the four intent flags are included in those seventeen,
+    not stacked on top) plus a 9-dim per-enemy power slot — an 8-dim power
+    embedding and one amount scalar. <code>6 × (16 + 17 + 9) = 252</code>.
+    This is the widest single group after hand, and for good reason — enemy
+    state drives almost all of my short-horizon decisions. The intent flags
+    are a small-but-essential block; without them, the network is guessing at
+    what's about to hit.
+  </p>
+  <p>
+    <strong>Piles (24).</strong> Draw, discard, and exhaust, each mean-pooled
+    to 8 dimensions. This was one of the structural calls that felt wrong at
+    first and turned out to be right. The first instinct is to encode a pile
+    position by position — slot 0, slot 1, slot 2 — which is what you'd do
+    for the hand. But pile contents are unordered. Slot 0 of the draw pile
+    has no fixed semantic meaning. Mean-pooling the card embeddings gives the
+    network a fixed-size summary of "what's in the draw pile" without baking
+    in a positional lie.
+  </p>
+  <p>
+    <strong>Relics (10).</strong> All relics mean-pooled into an 8-dim
+    embedding plus a counter and an active flag. Fewer dimensions than piles,
+    because relics are a small unordered set whose effects are either passive
+    or triggered by rules the network can infer from play. Over-investing in
+    relic representation at this stage would have been wasted capacity.
+  </p>
+  <p>
+    <strong>Powers (9).</strong> Active player powers mean-pooled — 8-dim
+    embedding plus an amount scalar. The smallest block in the vector, and
+    also the one I came back to last when I was trying to understand why a
+    run felt off. Powers usually don't dominate combat, but they shape it,
+    and I wanted the representation to be at least non-zero.
+  </p>
+
+  <table class="breakdown">
+    <tr><th>Group</th><th style="text-align:right">Dims</th><th>What</th></tr>
+    <tr><td>Player scalars</td><td class="dims">18</td><td>HP, block, energy, turn, debuffs, counters</td></tr>
+    <tr><td>Hand</td><td class="dims">270</td><td>10 × (16d embedding + 11 extras)</td></tr>
+    <tr><td>Enemies</td><td class="dims">252</td><td>6 × (16d embedding + 17 scalars incl. 4 intent flags + 9 per-enemy power slot)</td></tr>
+    <tr><td>Piles</td><td class="dims">24</td><td>draw/discard/exhaust mean-pooled</td></tr>
+    <tr><td>Relics</td><td class="dims">10</td><td>all relics mean-pooled</td></tr>
+    <tr><td>Powers</td><td class="dims">9</td><td>player powers mean-pooled</td></tr>
+    <tr class="total"><td>Total</td><td class="dims">583</td><td></td></tr>
+  </table>
+
+  <h2 id="vocabulary-growth">Iteration 3 — vocabulary growth</h2>
+  <p>
+    The curriculum adds cards and enemies as it advances, which means the
+    vocabulary has to grow during a single training run. My first approach
+    was to preallocate the embedding table to the full-game vocabulary at
+    start and leave the unused slots as untrained random embeddings, waiting
+    for their entities to show up. It was the lazy right answer — until I
+    noticed that those untrained slots were leaking random activations into
+    downstream computations. The network had to learn to ignore them, which
+    wasn't catastrophic but was wasted capacity.
+  </p>
+  <p>
+    The approach that worked: the learner holds a vocabulary index that grows
+    as new entities are seen, and the <code>nn.Embedding</code> table gets
+    rebuilt on growth — new random rows appended, existing rows preserved.
+    The vocabulary is serialized alongside the policy state dict, so when
+    actor proxies pull weights they also pull the updated vocabulary and
+    resize their copy of the table. No re-training, no lost progress on
+    previously-seen entities.
+  </p>
+  <pre><code>{`def resize_embedding(old: nn.Embedding, new_size: int) -> nn.Embedding:
+    if new_size <= old.num_embeddings:
+        return old
+    new_emb = nn.Embedding(new_size, old.embedding_dim)
+    with torch.no_grad():
+        new_emb.weight[:old.num_embeddings] = old.weight
+    return new_emb`}</code></pre>
+
+  <h2 id="trap-2-silent-bounds">Trap 2 — the silent ruin of normalization bounds</h2>
+  <p class="pullquote">
+    <em>
+      The bigger lesson: the normalization bounds matter as much as the
+      encoding scheme, and getting them wrong silently ruins training.
+    </em>
+  </p>
+  <p>
+    Here's the one I didn't see for three iterations. Every numeric scalar
+    in the input gets normalized to roughly <code>[0, 1]</code> or
+    <code>[-1, 1]</code> with clipping outside the range. I'd written
+    <code>_norm(x, lo, hi)</code> early on, picked some caps based on the
+    maxes I saw in early training runs — Poison divided by 100, Strength
+    divided by 50, Vulnerable divided by 50 — and stopped thinking about
+    them.
+  </p>
+  <p>
+    Those caps were wildly too low. Late-game poison builds run poison stacks
+    well above 100. Elite enemies hit Strength 150+. A heavily debuffed
+    player can exceed Vulnerable 50. Above the cap, the input clipped at 1.0.
+    The network lost all discrimination between "moderately high" and
+    "extremely high" — both mapped to the same normalized value. That's not
+    a training-failure signal I could see in the loss curve. It's a silent
+    loss of information, which is worse.
+  </p>
+  <p>
+    I looked at the game source for help, hoping there was a canonical max
+    somewhere. <code>PowerModel.SetAmount</code> caps at <code>999999999</code>
+    — effectively unbounded, engineered as a defensive limit against integer
+    wraparound. No useful information for normalization. The right answer was
+    empirical: set caps based on the realistic ranges I'd seen playing STS2,
+    roughly 2× the observed 99th percentile, and the network regains the
+    discrimination the clipping had been stealing.
+  </p>
+
+  <div class="trap silent">
+    <span class="trap-severity">Trap · Silent</span>
+    <span class="trap-headline">These caps were wildly too low.</span>
+    <p>
+      The network lost all discrimination between "moderately high" and
+      "extremely high" — they all looked the same. I looked at the game
+      source for help. <code>PowerModel.SetAmount</code> caps at
+      <code>999999999</code>, which is effectively unbounded; no useful
+      information there.
+    </p>
+    <span class="trap-fix"><strong>FIX →</strong> <code>set caps from gameplay, not from code defaults</code></span>
+  </div>
+
+  <table class="caps">
+    <tr><th>Scalar</th><th style="text-align:right">Cap</th></tr>
+    <tr><td>Vulnerable</td><td class="cap">300</td></tr>
+    <tr><td>Weak</td><td class="cap">50</td></tr>
+    <tr><td>Poison</td><td class="cap">200</td></tr>
+    <tr><td>Strength</td><td class="cap">±300</td></tr>
+    <tr><td>Artifact</td><td class="cap">30</td></tr>
+    <tr><td>Intangible</td><td class="cap">20</td></tr>
+    <tr><td>Thorns</td><td class="cap">50</td></tr>
+    <tr><td>Ritual</td><td class="cap">5</td></tr>
+    <tr><td>Dexterity</td><td class="cap">±50</td></tr>
+    <tr><td>Frail</td><td class="cap">100</td></tr>
+    <tr><td>Enemy max HP</td><td class="cap">1000</td></tr>
+  </table>
+
+  <p>
+    <span class="result-chip">
+      <span class="num">empirical caps</span>
+      <span class="lbl">· ~2× observed 99th</span>
+    </span>
+  </p>
+
+  <h2>What I'd do first next time</h2>
+  <ol>
+    <li>
+      <strong>Use learned embeddings for categorical features from day one.</strong>
+      One-hot is fine for small discrete action spaces. For entity IDs with
+      any kind of structural similarity, embeddings win.
+    </li>
+    <li>
+      <strong>Design for vocabulary growth from the start.</strong> Even if
+      the curriculum doesn't literally add cards, the card pool gets
+      refactored. The resize path is cheap to build up front.
+    </li>
+    <li>
+      <strong>Derive normalization caps from gameplay, not from code.</strong>
+      Internal code caps are almost always defensive and effectively
+      infinite; they tell you nothing about realistic ranges.
+    </li>
+    <li>
+      <strong>Pool unordered collections.</strong> Positional encoding of
+      unordered data is wasted capacity.
+    </li>
+  </ol>
+
+  <h2 id="takeaways">Key takeaways</h2>
+  <ol>
+    <li>
+      Embeddings beat one-hot for entity-like categorical features — more
+      compact, more expressive, and similarity falls out for free.
+    </li>
+    <li>
+      Let the network learn its own representation. Hand-designed features
+      are tempting; learned embeddings consistently outperform them on data
+      with real structure.
+    </li>
+    <li>
+      Normalization caps matter enormously. Too low clips signal; too high
+      wastes range; pick them empirically.
+    </li>
+    <li>
+      Plan for vocabulary growth. Mid-training vocabulary change is a
+      "when," not an "if."
+    </li>
+    <li>
+      Pool unordered collections. Positional encoding of unordered data is
+      wasted capacity.
+    </li>
+  </ol>
+</Post>

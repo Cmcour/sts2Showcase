@@ -1,0 +1,474 @@
+---
+import Post from '../../layouts/Post.astro';
+const base = import.meta.env.BASE_URL;
+
+const headings = [
+  { text: 'Shape ledger',        id: 'shape-ledger' },
+  { text: 'Player scalars',      id: 'scalars' },
+  { text: 'Hand',                id: 'hand' },
+  { text: 'Enemies',             id: 'enemies' },
+  { text: 'Piles',               id: 'piles' },
+  { text: 'Relics',              id: 'relics' },
+  { text: 'Player powers',       id: 'powers' },
+  { text: 'Where it all lands',  id: 'where-it-lands' },
+];
+---
+<Post
+  title="Input Vector — What the Network Actually Sees"
+  date="2026-04-19"
+  activeTab="deep-dive"
+  headings={headings}
+>
+  <p class="deck">
+    A dimensional tour of the 583-dim tensor fed to the policy network,
+    grounded in <code>src/bot/model.py</code>. What each float is, where it
+    comes from in game state, and why it's shaped that way.
+  </p>
+
+  <h2 id="shape-ledger">Shape ledger</h2>
+  <table class="shape-ledger">
+    <thead>
+      <tr><th>Field group</th><th>Shape</th><th class="num">Dtype</th><th class="num">→ Trunk</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Scalars</td><td class="shape">[1, 18]</td><td class="dtype">float32</td><td class="contrib">18</td></tr>
+      <tr><td>Hand cards</td><td class="shape">[1, 10] × 12 + [1, 10, 16]</td><td class="dtype">long + float32</td><td class="contrib">270</td></tr>
+      <tr><td>Enemies</td><td class="shape">[1, 6] × 17 + [1, 6, 16] + [1, 6, 15, 9]</td><td class="dtype">long + float32</td><td class="contrib">252</td></tr>
+      <tr><td>Piles (draw/discard/exhaust)</td><td class="shape">[1, 30] × 3 + masks</td><td class="dtype">long + float32</td><td class="contrib">24</td></tr>
+      <tr><td>Relics</td><td class="shape">[1, 20] × 4</td><td class="dtype">long + float32</td><td class="contrib">10</td></tr>
+      <tr><td>Player powers</td><td class="shape">[1, 15] × 3</td><td class="dtype">long + float32</td><td class="contrib">9</td></tr>
+      <tr><td>Action mask</td><td class="shape">[1, 61]</td><td class="dtype">bool</td><td class="contrib">—</td></tr>
+    </tbody>
+  </table>
+  <p>
+    Seven tensor groups land in <code>EncodedState</code>. Six of them concat
+    into the 583-dim block that feeds the MLP trunk. The seventh,
+    <code>action_mask</code>, is routed separately — it's applied after the
+    policy head to zero out illegal logits via
+    <code>logits.masked_fill(~enc.action_mask, -1e9)</code>. The trunk never
+    sees it.
+  </p>
+  <p>
+    The constants that shape these tensors live at the top of
+    <code>src/bot/model.py</code>: <code>MAX_HAND = 10</code>,
+    <code>MAX_TARGETS = 6</code>, <code>MAX_POWERS = 15</code>,
+    <code>MAX_RELICS = 20</code>, and
+    <code>MAX_DRAW = MAX_DISCARD = MAX_EXHAUST = 30</code>. Embedding widths:
+    <code>CARD_EMB_DIM = 16</code>, <code>ENEMY_EMB_DIM = 16</code>,
+    <code>RELIC_EMB_DIM = 8</code>, <code>PILE_EMB_DIM = 8</code>,
+    <code>POWER_EMB_DIM = 8</code>. The three entry points to read alongside
+    this article are <code>EncodedState</code> (line 83),
+    <code>encode_state</code> (line 189), and
+    <code>StsPolicy._trunk_forward</code> (line 445).
+  </p>
+  <p>
+    Each section below takes one group, puts the raw game state on the left
+    and the encoded tensor slice on the right, and walks the formulas in
+    between. The retrospective — what one-hot trap I fell into, where the
+    normalization caps were wildly too low — lives over in the
+    <a href={`${base}learned/input-vector/`}>lessons-learned post</a>. This
+    one's the tour.
+  </p>
+
+  <h2 id="scalars">Player scalars (18)</h2>
+  <div class="split-card">
+    <div class="split-card-header">Player state → scalars</div>
+    <div class="split-side left">
+      <div class="label">Game state fragment</div>
+<pre>{`state["player"] = {
+  "hp": 55, "max_hp": 80,
+  "block": 6,
+  "energy": 2, "max_energy": 3,
+  "strength": 1, "dexterity": 0,
+  "vulnerable": 0, "weak": 0,
+  "frail": 0, "intangible": 0,
+  "thorns": 0,
+  "attacks_played": 2,
+  "skills_played": 1,
+  "powers_played": 0
+}`}</pre>
+    </div>
+    <div class="split-side right">
+      <div class="label">scalars[1, 18] float32</div>
+      <ul>
+        <li><code>[0]</code> <span class="note">→ hp/max_hp</span></li>
+        <li><code>[1]</code> <span class="note">→ block/max_hp</span></li>
+        <li><code>[2]</code> <span class="note">→ energy/max_energy</span></li>
+        <li><code>[3–5]</code> <span class="note">→ pile fractions /30</span></li>
+        <li><code>[6]</code> <span class="note">→ turn/20</span></li>
+        <li><code>[7]</code> <span class="note">→ len(hand)/10</span></li>
+        <li><code>[8]</code> <span class="note">→ _norm(strength, -300, 300)</span></li>
+        <li><code>[9]</code> <span class="note">→ _norm(dex, -50, 50)</span></li>
+        <li><code>[10]</code> <span class="note">→ _norm(vuln, 0, 300)</span></li>
+        <li><code>[11]</code> <span class="note">→ _norm(weak, 0, 50)</span></li>
+        <li><code>[12]</code> <span class="note">→ _norm(frail, 0, 100)</span></li>
+        <li><code>[13]</code> <span class="note">→ _norm(intang, 0, 20)</span></li>
+        <li><code>[14]</code> <span class="note">→ _norm(thorns, 0, 50)</span></li>
+        <li><code>[15–17]</code> <span class="note">→ _norm(counters)</span></li>
+      </ul>
+    </div>
+  </div>
+  <p>
+    The 18 numbers aren't a flat block — they split into three semantic
+    sub-groups. The first eight are game-state fractions: hp, block, and
+    energy as fractions of their max, pile sizes divided by 30, the turn
+    number clipped at 20 and divided by 20, and the hand size divided by
+    <code>MAX_HAND</code>. The next seven are player buffs and debuffs run
+    through <code>_norm</code>. The last three are action counters — how
+    many attacks, skills, and powers I've played this turn, each
+    normalized by a realistic per-turn cap.
+  </p>
+  <p>
+    The <code>_norm</code> function is three lines:
+    <code>min(max(val, lo), hi) / hi</code>. It clamps the value into
+    <code>[lo, hi]</code> and divides by <code>hi</code>. For
+    <code>_norm(strength, -300, 300)</code>, that returns
+    <code>[-1, 1]</code>; for <code>_norm(vulnerable, 0, 300)</code>, that
+    returns <code>[0, 1]</code>. Strength and dexterity are the only
+    two-sided signed scalars in the block. This convention isn't documented
+    anywhere except the <code>_norm</code> docstring ("or
+    <code>[-1, 1]</code> if <code>lo &lt; 0</code>"). The sign of each
+    scalar is reason-from-the-<code>lo</code>-argument knowledge, not a
+    flag in the tensor metadata.
+  </p>
+  <p>
+    The scalar block is the only part of the input vector that doesn't
+    pass through an embedding layer. These are plain normalized floats,
+    concatenated verbatim into the 583-dim trunk input.
+  </p>
+
+  <h2 id="hand">Hand (270)</h2>
+  <div class="split-card">
+    <div class="split-card-header">Hand slot → encoded tensor</div>
+    <div class="split-side left">
+      <div class="label">Game state (one slot)</div>
+<pre>{`{
+  "id": "Strike_R",
+  "cost": 1,
+  "upgraded": false,
+  "is_attack": true,
+  "is_skill": false,
+  "is_power": false,
+  "x_cost": false,
+  "exhaust": false,
+  "ethereal": false,
+  "innate": false,
+  "retain": false,
+  "sly": false
+}`}</pre>
+    </div>
+    <div class="split-side right">
+      <div class="label">EncodedState fields</div>
+      <ul>
+        <li><code>card_ids[0, i]</code> <span class="shape">[1, 10]</span> <span class="note">→ card_vocab.index("Strike_R")</span></li>
+        <li><code>card_costs[0, i]</code> <span class="shape">[1, 10]</span> <span class="note">→ cost / 3</span></li>
+        <li><code>card_upgraded[0, i]</code> <span class="shape">[1, 10]</span> <span class="note">→ flag</span></li>
+        <li><code>card_type_&#123;attack,skill,power&#125;</code> <span class="shape">[1, 10] × 3</span></li>
+        <li><code>card_x_cost, card_exhaust, card_ethereal,</code><br/><code>card_innate, card_retain, card_sly</code> <span class="shape">[1, 10] × 6</span></li>
+        <li><code>card_mask[0, i] = 1</code> <span class="shape">[1, 10]</span> <span class="note">→ zero for padding</span></li>
+      </ul>
+    </div>
+  </div>
+  <p>
+    Ten hand slots, each carrying a 16-dim learned embedding plus 11
+    hand-crafted scalar extras. <code>10 × (16 + 11) = 270</code>. This is
+    the biggest contributor to the input.
+  </p>
+  <p>
+    The 11 extras aren't a keyword bitmap. Cost, upgraded, three type
+    flags (attack/skill/power), an <code>x_cost</code> flag, and five
+    keyword flags (exhaust, ethereal, innate, retain, sly) each get their
+    own tensor. The network reads each flag as its own gradient channel.
+    The alternative — packing the 11 flags into a single integer and
+    looking up an embedding — would be cheaper but would lose the
+    per-flag gradient signal.
+  </p>
+  <p>
+    In the forward pass (lines 449–469 of <code>_trunk_forward</code>),
+    the embedding lookup happens first:
+    <code>card_emb = self.card_emb(enc.card_ids)</code> produces
+    <code>[B, 10, 16]</code>. The mask zeros padding slots before the
+    reshape: <code>card_emb = card_emb * enc.card_mask.unsqueeze(-1)</code>.
+    Then <code>torch.stack(..., dim=-1)</code> packs the 11 extras into
+    <code>[B, 10, 11]</code>, the mask multiply zeros padding again,
+    <code>torch.cat</code> joins the extras to the embedding at
+    <code>[B, 10, 27]</code>, and a final <code>.reshape(B, -1)</code>
+    flattens to <code>[B, 270]</code>.
+  </p>
+  <p>
+    The mask multiply is load-bearing for a subtle reason. Padding slots
+    have <code>card_ids[i] = 0</code>, which is the same index as
+    <code>&lt;unk&gt;</code> in the vocabulary — the "unseen card" token.
+    Without the mask zeroing, the network would read "empty slot 7" and
+    "I just drew an unseen card" as the same input. With the mask,
+    padding contributes exactly zero to the flat vector.
+  </p>
+
+  <h2 id="enemies">Enemies (252)</h2>
+  <div class="split-card">
+    <div class="split-card-header">Enemy → encoded tensor</div>
+    <div class="split-side left">
+      <div class="label">Game state (one enemy)</div>
+<pre>{`{
+  "id": "AcidSlime_L",
+  "hp": 48, "max_hp": 65, "block": 6,
+  "intent_damage": 11, "intent_hits": 1,
+  "intends_attack": true,
+  "intends_buff": false,
+  "intends_debuff": false,
+  "intends_block": false,
+  "vulnerable": 0, "weak": 0, "poison": 3,
+  "strength": 0, "artifact": 0,
+  "intangible": 0, "thorns": 0, "ritual": 0,
+  "powers": [
+    {"id": "StrengthUp", "amount": 2}
+  ]
+}`}</pre>
+    </div>
+    <div class="split-side right">
+      <div class="label">EncodedState fields (17 scalars + 9 power pool)</div>
+      <ul>
+        <li><code>enemy_ids</code> <span class="note">→ enemy_vocab.index(...)</span></li>
+        <li><code>enemy_hp_frac</code> <span class="note">→ 48/65 = 0.738</span></li>
+        <li><code>enemy_max_hp_norm</code> <span class="note">→ min(65, 1000)/1000 = 0.065</span></li>
+        <li><code>enemy_block_frac</code> <span class="note">→ 6/65 = 0.092</span></li>
+        <li><code>enemy_intent_dmg</code> <span class="note">→ min(11, 50)/50 = 0.22</span></li>
+        <li><code>enemy_intent_hits</code> <span class="note">→ min(1, 10)/10 = 0.1</span></li>
+        <li><code>enemy_intends_&#123;attack,buff,debuff,block&#125;</code> <span class="note">→ 4 flags</span></li>
+        <li><code>enemy_vulnerable/weak/poison</code> <span class="note">→ normalized</span></li>
+        <li><code>enemy_strength/artifact/intangible/thorns/ritual</code> <span class="note">→ normalized</span></li>
+        <li><code>enemy_power_ids[i, j] = power_vocab.index("StrengthUp")</code> <span class="shape">[1, 6, 15]</span></li>
+        <li><code>enemy_power_amounts[i, j] = 2/50</code> <span class="shape">[1, 6, 15]</span></li>
+        <li><code>enemy_power_mask[i, j] = 1</code> for real, <span class="note">0 for pad</span></li>
+      </ul>
+    </div>
+  </div>
+  <p>
+    <code>6 × (16 + 17 + 9) = 252</code>. Six enemy slots, each with a
+    16-dim embedding, 17 scalar extras, and a 9-dim pooled power block.
+    Second-biggest contributor after hand.
+  </p>
+  <p>
+    The 17 scalars aren't a flat list — they split into three sub-groups.
+    State (hp_frac, max_hp_norm, block_frac) — the enemy's current
+    defensive posture. Intent (intent_dmg, intent_hits, and four intent
+    flags: attacks / buffs / debuffs / blocks) — what the enemy is about
+    to do. Buffs/debuffs (vulnerable, weak, poison, strength, artifact,
+    intangible, thorns, ritual) — what conditions it has stacked. The
+    four intent flags live inside those 17, not on top. All 17 get
+    stacked via <code>torch.stack(..., dim=-1)</code> into
+    <code>[B, 6, 17]</code>.
+  </p>
+  <p>
+    The per-enemy power pool is where the architecture earns its keep.
+    <code>MAX_POWERS = 15</code> per enemy. Encoded naively as 15 × 9 =
+    135 scalars per enemy, times six enemies, that's 810 dims just for
+    enemy powers. Instead, the forward pass reshapes
+    <code>enemy_power_ids</code> to <code>[B*6, 15]</code> for a batched
+    <code>self.power_emb</code> lookup, appends the normalized amount as
+    a trailing dim, mean-pools across the 15 slots with
+    <code>mask.sum(-1).clamp(min=1)</code> as the divisor, and reshapes
+    back to <code>[B, 6, 9]</code>. Ten percent of the naive cost, same
+    "what's active on this enemy" signal.
+  </p>
+  <p>
+    <code>enemy_intent_dmg</code> clips at 50 —
+    <code>min(v, 50) / 50</code>. That cap is the one in this group most
+    likely to be on the edge of plausible late-game values; elite attacks
+    in the 30-40 range are common, a 50+ attack isn't unheard of. The
+    other caps (<code>max_hp / 1000</code>,
+    <code>vulnerable / 300</code>, <code>poison / 200</code>,
+    <code>strength / 300</code>) are loose enough that late-game values
+    stay inside the range.
+  </p>
+
+  <h2 id="piles">Piles (24)</h2>
+  <div class="split-card">
+    <div class="split-card-header">Pile → pooled embedding</div>
+    <div class="split-side left">
+      <div class="label">Game state</div>
+<pre>{`state["draw_pile"]    = ["Strike_R", "Strike_R", "Defend_R", ...]
+state["discard_pile"] = ["Bash", ...]
+state["exhaust_pile"] = []`}</pre>
+    </div>
+    <div class="split-side right">
+      <div class="label">EncodedState + _pool_pile</div>
+      <ul>
+        <li><code>draw_ids[0, :k] = vocab.index(card)</code>, pad 0</li>
+        <li><code>draw_mask[0, :k] = 1</code>, else 0</li>
+        <li><code>self.pile_emb(draw_ids) * draw_mask.unsqueeze(-1)</code></li>
+        <li><code>.sum(dim=1) / mask.sum(-1).clamp(min=1)</code></li>
+        <li>→ <span class="shape">[B, 8]</span> per pile</li>
+      </ul>
+    </div>
+  </div>
+  <p>
+    Draw, discard, and exhaust. Each pile is an unordered bag of up to 30
+    card IDs, pooled through <code>self.pile_emb</code> to 8 dims.
+    <code>8 × 3 = 24</code>.
+  </p>
+  <p>
+    <code>self.pile_emb</code> is a separate
+    <code>nn.Embedding(card_vocab_size, PILE_EMB_DIM)</code> from
+    <code>self.card_emb</code>. Same vocabulary index, independent weight
+    tables. A Strike in the hand and a Strike in the draw pile look up
+    different rows — one for "I can play this right now," one for "this
+    is in the bag I'll draw from." Sharing the table would force a single
+    embedding to carry both meanings; splitting it lets each table
+    specialize.
+  </p>
+  <p>
+    The inner <code>_pool_pile</code> function is four lines: multiply
+    the embedding by the mask, sum across the pile dim, divide by the
+    clamped mask sum. The <code>mask.sum(-1).clamp(min=1)</code> is the
+    empty-pile guard. Without <code>clamp</code>, an empty exhaust pile —
+    common on turn one — divides zero by zero and NaNs the forward pass.
+    With <code>clamp(min=1)</code>, the denominator is 1 but the
+    numerator is still zero (every embedding was masked out), so the
+    pool vector comes out as all zeros. That's the right default for
+    "nothing here."
+  </p>
+
+  <h2 id="relics">Relics (10)</h2>
+  <div class="split-card">
+    <div class="split-card-header">Relics → pooled summary</div>
+    <div class="split-side left">
+      <div class="label">Game state</div>
+<pre>{`state["relics"] = [
+  {"id": "BurningBlood", "counter": 0, "active": false},
+  {"id": "Lantern",      "counter": 1, "active": true},
+  ...
+]`}</pre>
+    </div>
+    <div class="split-side right">
+      <div class="label">EncodedState fields</div>
+      <ul>
+        <li><code>relic_ids[1, 20] long</code></li>
+        <li><code>relic_counters[1, 20] = min(counter, 10) / 10</code></li>
+        <li><code>relic_active[1, 20]</code> <span class="note">→ flag</span></li>
+        <li><code>relic_mask[1, 20]</code></li>
+        <li>Mean-pooled → <span class="shape">[1, 10]</span> = 8-dim emb + counter + active</li>
+      </ul>
+    </div>
+  </div>
+  <p>
+    Up to 20 relic slots mean-pooled into a single 10-dim summary:
+    <code>RELIC_EMB_DIM(8) + 1 counter + 1 active = 10</code>. The
+    embedding and the two scalars are concatenated per-slot, mask-zeroed,
+    summed, and divided by the clamped mask count — the same
+    <code>clamp(min=1)</code> guard as the piles.
+  </p>
+  <p>
+    The pool-instead-of-positional choice is intentional. Relics are
+    mostly passive modifiers — Bronze Scales reflects damage, Lantern
+    gives free energy turn 1, Ink Bottle triggers every ten cards played.
+    The policy network doesn't need to know "relic in slot 3 vs. slot 4";
+    it needs "is this relic-y effect active?" Mean-pooling collapses
+    positional information the network would have to learn to ignore.
+    The pile pools (30 slots → 8 dims each, 1:30) and this relic pool
+    (20 slots → 10 dims, 1:20) are the two most aggressive shrinks in
+    the vector.
+  </p>
+  <p>
+    <code>relic_counters = min(counter, 10) / 10</code> caps at 10. That
+    works for the common counter-relics — Lantern, Snecko Eye, Ink
+    Bottle charge counters. Rare late-game relics that accrue &gt;10
+    stacks would clip to 1.0, losing discrimination. In practice this
+    hasn't shown up as a training signal; flagged here for anyone
+    building a similar encoder on a different relic pool.
+  </p>
+
+  <h2 id="powers">Player powers (9)</h2>
+  <div class="split-card">
+    <div class="split-card-header">Powers → pooled summary</div>
+    <div class="split-side left">
+      <div class="label">Game state</div>
+<pre>{`player["powers"] = [
+  {"id": "Ritual",     "amount": 3},
+  {"id": "StrengthUp", "amount": 2},
+  ...
+]`}</pre>
+    </div>
+    <div class="split-side right">
+      <div class="label">EncodedState fields</div>
+      <ul>
+        <li><code>player_power_ids[1, 15] long</code></li>
+        <li><code>player_power_amounts[1, 15]</code> <span class="note">→ clamped [-50, 50] / 50</span></li>
+        <li><code>player_power_mask[1, 15]</code></li>
+        <li>Mean-pooled → <span class="shape">[1, 9]</span> = 8-dim emb + 1 amount</li>
+      </ul>
+    </div>
+  </div>
+  <p>
+    Fifteen generic power slots mean-pooled to
+    <code>POWER_EMB_DIM(8) + 1 = 9</code>. Smallest group in the concat.
+  </p>
+  <p>
+    <code>self.power_emb</code> is shared between the player-power pool
+    and the per-enemy power pools from the Enemies section. One
+    <code>nn.Embedding(power_vocab_size, 8)</code> table, two call sites.
+    A Ritual power on the player and a Ritual power on an enemy lookup
+    the same embedding row — shared semantics for shared mechanics,
+    without doubling the embedding weights.
+  </p>
+  <p>
+    The amount scalar is clipped symmetrically:
+    <code>min(max(amount, -50), 50) / 50</code>, in
+    <code>_encode_powers</code> (line 167). Strength-like powers can be
+    negative (strength debuff reduces attack damage); the symmetric clip
+    preserves that sign. The <code>/50</code> divisor is chosen the same
+    way other debuff caps are chosen — realistic maxes from gameplay,
+    not defensive caps from game source.
+  </p>
+
+  <h2 id="where-it-lands">Where it all lands</h2>
+  <div class="vector-decomp" role="img" aria-label="583-dim input vector: 18 player, 270 hand, 252 enemies, 24 piles, 10 relics, 9 powers">
+    <div class="vec-segment player"  style="flex: 18 0 0"><span class="vec-num">18</span><span class="vec-lbl">Player</span></div>
+    <div class="vec-segment hand"    style="flex: 270 0 0"><span class="vec-num">270</span><span class="vec-lbl">Hand</span></div>
+    <div class="vec-segment enemies" style="flex: 252 0 0"><span class="vec-num">252</span><span class="vec-lbl">Enemies</span></div>
+    <div class="vec-segment piles"   style="flex: 24 0 0"><span class="vec-num">24</span><span class="vec-lbl">Piles</span></div>
+    <div class="vec-segment relics"  style="flex: 10 0 0"><span class="vec-num">10</span><span class="vec-lbl">Relics</span></div>
+    <div class="vec-segment powers"  style="flex: 9 0 0"><span class="vec-num">9</span><span class="vec-lbl">Powers</span></div>
+  </div>
+  <p class="vec-caption-bottom">
+    Hand and enemies: 522 of 583 dims. The policy spends most of its input
+    budget on what's in front of it right now.
+  </p>
+
+  <div class="callout structural">
+    <div class="c-kicker">Where this lands in the net</div>
+    <div class="c-head">Six tensors, one concatenation, a [B, 583] block.</div>
+<pre><code>{`x = torch.cat([enc.scalars, card_flat, enemy_flat,
+               draw_pool, disc_pool, exh_pool,
+               relic_pool, pp_pool], dim=-1)
+# x.shape == [B, 583]`}</code></pre>
+    <p>
+      That <code>[B, 583]</code> feeds
+      <code>Linear(583, 256) → LayerNorm → ReLU → Linear(256, 256) → LayerNorm → ReLU</code>,
+      then the heads: <code>policy_head: Linear(256, 61)</code> for action
+      logits, <code>value_head: Linear(256, 1)</code> for V(s),
+      <code>discard_head: Linear(256, 10)</code> for end-of-turn discard
+      priority. Illegal actions get masked to <code>-1e9</code> before the
+      softmax. 61 actions = 1 <code>end_turn</code> + 10 × 6
+      <code>play(card, target)</code>.
+    </p>
+  </div>
+
+  <p>
+    The trunk is a plain MLP. No attention, no transformer. The 583 → 256
+    compression in the first linear layer is the only bottleneck between
+    raw state and hidden, which is why the input budget matters: every
+    dimension spent on padding or redundant encoding is headroom the
+    policy and value heads don't get.
+  </p>
+  <p>
+    <code>action_index_to_dict</code> (line 353) inverts the flat action
+    index back into
+    <code>&#123;"type": "play", "card_idx": c, "target_idx": t&#125;</code>
+    so the bridge can dispatch it to the C# game. The input dim budget
+    and the action budget are engineered together:
+    <code>MAX_HAND × MAX_TARGETS + 1 = 61</code>, and
+    <code>self.policy_head = Linear(256, 61)</code>. Change one constant
+    and both the concat shape and the head width move with it.
+  </p>
+</Post>

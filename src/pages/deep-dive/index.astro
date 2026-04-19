@@ -2,34 +2,73 @@
 import Base from '../../layouts/Base.astro';
 const base = import.meta.env.BASE_URL;
 
-const posts = [
+type Post = {
+  slug: string;
+  title: string;
+  date: string;
+  category: string;
+  excerpt: string;
+};
+const posts: Post[] = [
   {
-    slug: 'input-vector',
-    title: 'The 583-Dimensional Input Vector',
-    date: 'April 2026',
-    excerpt: 'How a complex game state with cards, enemies, relics, and powers gets encoded into a fixed-size vector for the neural network.',
+    slug: 'slay-the-spire',
+    title: 'Slay the Spire 2 \u2014 What the Agent Is Actually Playing',
+    date: '2026-04-19',
+    category: 'Deep Dive',
+    excerpt: 'Before I can show you how the agent plays this game, I have to show you the game. Here\u2019s the 5-minute version \u2014 the mechanics, the intent-telegraphing, and the three structural properties that make this a harder RL problem than it looks.',
   },
   {
-    slug: 'distributed-training',
-    title: 'Distributed Training Over a Laptop Fleet',
-    date: 'April 2026',
-    excerpt: 'Running 11 headless game instances across multiple machines, syncing weights over TCP, and debugging flaky LAN connections.',
+    slug: 'reinforcement-learning',
+    title: 'Reinforcement Learning, Grounded In One Project',
+    date: '2026-04-19',
+    category: 'Deep Dive',
+    excerpt: 'Six words do the conceptual work. Four files do the actual work. Here they are, side by side \u2014 a tour of model.py, reward.py, actor_proxy.py, and learner.py, with the PPO update cycle as the mid-article payoff.',
+  },
+  {
+    slug: 'neural-network',
+    title: 'The Neural Network: Five Embeddings, One Trunk, Three Heads',
+    date: '2026-04-19',
+    category: 'Deep Dive',
+    excerpt: 'A ~234K-parameter policy + value network that learns to play Slay the Spire 2 \u2014 told in one flow diagram and three cards. The trunk is smaller than the input, and almost all of the representation work happens in the embeddings.',
+  },
+  {
+    slug: 'input-vector-dd',
+    title: 'Input Vector \u2014 What the Network Actually Sees',
+    date: '2026-04-19',
+    category: 'Deep Dive',
+    excerpt: 'A dimensional tour of the 583-dim tensor fed to the policy network, grounded in src/bot/model.py. What each float is, where it comes from in game state, and why it\u2019s shaped that way.',
+  },
+  {
+    slug: 'distributed-compute',
+    title: 'Distributed Compute \u2014 Eleven Laptops, One TCP Port, and a Scheduled Task',
+    date: '2026-04-19',
+    category: 'Deep Dive',
+    excerpt: 'Eleven Windows laptops run an actor proxy each. One PPO learner runs on my desk. They talk over a single TCP port on the home LAN. This post is what the compute actually looks like today \u2014 numbers, configs, and the wire.',
   },
 ];
 ---
 <Base title="Deep Dives" activeTab="deep-dive">
-  <h1>Deep Dives</h1>
-  <p class="hero-subtitle">Technical deep dives into specific components of the system.</p>
+  <main class="frame">
+    <div class="index-head">
+      <h1>Deep Dives</h1>
+      <p class="sub">Technical deep dives into specific components of the system.</p>
+    </div>
 
-  <ul class="post-list">
-    {posts.map(post => (
-      <li class="post-item">
-        <a href={`${base}deep-dive/${post.slug}/`}>
-          <div class="post-title">{post.title}</div>
-          <div class="post-date">{post.date}</div>
-          <div class="post-excerpt">{post.excerpt}</div>
-        </a>
-      </li>
-    ))}
-  </ul>
+    <ul class="post-list">
+      {posts.map(post => (
+        <li class="post-item">
+          <a href={`${base}deep-dive/${post.slug}/`}>
+            <div class="post-kicker">{post.category}</div>
+            <div class="post-top">
+              <div class="post-title">{post.title}</div>
+              <span class="post-date">{post.date}</span>
+            </div>
+            <p class="post-lede">{post.excerpt}</p>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </main>
 </Base>
+
+<!-- _v5 Workshop Warm blog index — amber kicker, bold title, dim lede, mono date right. 2026-04-18_ -->

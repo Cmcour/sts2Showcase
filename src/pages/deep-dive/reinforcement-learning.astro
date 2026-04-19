@@ -1,0 +1,393 @@
+---
+import Post from '../../layouts/Post.astro';
+
+const headings = [
+  { text: 'Fundamentals',              id: 'fundamentals' },
+  { text: 'How the pieces fit',        id: 'how-it-fits' },
+  { text: 'Stop 1 · model.py',         id: 'stop-1-model' },
+  { text: 'Stop 2 · reward.py',        id: 'stop-2-reward' },
+  { text: 'Stop 3 · actor_proxy.py',   id: 'stop-3-actor' },
+  { text: 'Stop 4 · learner.py',       id: 'stop-4-learner' },
+  { text: 'One update, start to finish', id: 'update-cycle' },
+  { text: 'Hyperparameters',           id: 'hyperparameters' },
+  { text: 'What I\u2019d tell someone learning RL', id: 'takeaways' },
+];
+---
+<Post
+  title="Reinforcement Learning, Grounded In One Project"
+  date="2026-04-19"
+  activeTab="deep-dive"
+  headings={headings}
+>
+  <p class="deck">
+    Six words do the conceptual work. Four files do the actual work. Here they
+    are, side by side.
+  </p>
+
+  {/* Fundamentals card hero — six term/definition tiles */}
+  <section class="fundamentals-card" id="fundamentals" aria-label="Reinforcement learning vocabulary">
+    <div class="fc-cell">
+      <div class="term">Agent</div>
+      <div class="def">The decision-maker. In code, a neural network that maps state to an action distribution.</div>
+    </div>
+    <div class="fc-cell">
+      <div class="term">Environment</div>
+      <div class="def">Everything the agent interacts with. Returns <code>(state, reward, done)</code> per action.</div>
+    </div>
+    <div class="fc-cell">
+      <div class="term">Reward</div>
+      <div class="def">The scalar the agent is trying to maximize the expected discounted sum of.</div>
+    </div>
+    <div class="fc-cell">
+      <div class="term">Policy</div>
+      <div class="def">π(a | s). Distribution over actions given the current state.</div>
+    </div>
+    <div class="fc-cell">
+      <div class="term">Value</div>
+      <div class="def">V(s). Expected future reward from a state — a learned baseline the policy gradient is compared against.</div>
+    </div>
+    <div class="fc-cell">
+      <div class="term">PPO</div>
+      <div class="def">The update rule. Policy-gradient with a clipped ratio so no single step moves the policy too far.</div>
+    </div>
+  </section>
+  <p class="orienting">
+    Six words do most of the work. The rest of this post is where each one
+    lives in the repo.
+  </p>
+
+  <h2 id="how-it-fits">How the pieces fit</h2>
+  <p>
+    Most RL articles open on the canonical cartoon — agent box, environment
+    box, three labeled arrows — and work outward from there. I'm skipping
+    it. The four files in this project are the cartoon made concrete, and I
+    find it faster to introduce the vocabulary in a card and then point at
+    the code.
+  </p>
+  <p>
+    The training pipeline splits across two processes. An actor proxy runs
+    the agent-environment loop inside a patched STS2 build and collects
+    rollouts. A central learner pulls rollouts off a TCP socket and runs
+    PPO. That split is a distributed-systems detail with its own write-up;
+    here the two processes are treated as one RL pipeline, with each of
+    the six words pinned to whichever file owns it.
+  </p>
+
+  <div class="version-kicker">Policy · Value</div>
+  <section id="stop-1-model" class="iter-card">
+    <h2>Stop 1 — <code>model.py</code> (policy and value)</h2>
+    <p>
+      <code>StsPolicy</code> in <code>src/bot/model.py</code> is one network
+      with two (really three) heads. Trunk is two <code>Linear → LayerNorm → ReLU</code>
+      blocks at <code>HIDDEN_DIM = 256</code>. <code>policy_head</code> is
+      <code>Linear(256, MAX_ACTIONS)</code> with <code>MAX_ACTIONS = 61</code>
+      (1 end-turn + 10 hand slots × 6 target slots). <code>value_head</code>
+      is <code>Linear(256, 1)</code>. A third <code>discard_head</code> is
+      <code>Linear(256, MAX_HAND)</code> and scores which card to pitch at
+      mid-turn discard prompts. Embeddings for cards, enemies, relics, and
+      powers feed the trunk — the input-vector article covers those.
+    </p>
+    <pre><code>{`def forward(self, enc):
+    h = self._trunk_forward(enc)
+    logits = self.policy_head(h)
+    value  = self.value_head(h)
+    discard_scores = self.discard_head(h)
+    logits = logits.masked_fill(~enc.action_mask, -1e9)
+    return logits, value, discard_scores`}</code></pre>
+    <p>
+      The policy head outputs 61 logits. Most of them aren't legal on any
+      given turn — the hand reshuffles, enemies die, some cards exhaust. The
+      environment supplies an action mask; illegal slots get <code>-1e9</code>
+      before softmax so their probability is zero. Fixed action space,
+      dynamic legality — that's what makes the head compatible with a game
+      where the move set changes every step.
+    </p>
+    <p>
+      Shared trunk, two (really three) heads, one forward pass. Not a clever
+      architecture — it's the shape PPO assumes and every reference implementation uses.
+      The reason is pragmatic: PPO's loss combines a policy term and a value
+      term, and running them through one backbone means both objectives
+      flow gradients through the same features. Two separate networks would
+      double the parameter count and force the value head to learn from
+      scratch what the policy head has already learned about "good state,
+      bad state."
+    </p>
+  </section>
+
+  <div class="version-kicker">Reward</div>
+  <section id="stop-2-reward" class="iter-card">
+    <h2>Stop 2 — <code>reward.py</code> (the scalar the agent is optimizing)</h2>
+    <p>
+      <code>EpisodeRewardTracker</code> in <code>src/bot/reward.py</code>
+      assembles the reward from three components.
+    </p>
+    <pre><code>{`DEFAULT_DAMAGE_SCALE = 2.0
+TURN_PENALTY         = 0.01
+
+class EpisodeRewardTracker:
+    def step_reward(self, curr_hp):     ...   # -(damage_taken / max_hp) * 2.0
+    def turn_penalty(self):             ...   # -0.01 per end_turn
+    def terminal_reward(self, won, hp_remaining):
+        return (1.0 + hp_remaining/max_hp) if won else -1.0`}</code></pre>
+    <p>
+      Terminal: <code>+1.0 + hp_fraction</code> for a win, <code>-1.0</code>
+      for a loss. Per-step damage: a fraction of max HP lost this step,
+      scaled by 2. The scale is deliberate — a full-HP bleed-out over an
+      episode sums to <code>-2.0</code>, which is the same magnitude as the
+      terminal reward. Losing is never much worse than dying slowly, and
+      dying slowly is never much better than dying fast. Turn penalty: a
+      flat <code>-0.01</code> every time <code>end_turn</code> fires.
+    </p>
+    <p>The module docstring pins the scale to example outcomes:</p>
+    <blockquote>
+      Perfect game (win, 0 damage, 3 turns): +1.97<br/>
+      Win, 20 HP lost (70 max), 5 turns: +1.09<br/>
+      Barely win (60 HP lost, 8 turns): -0.65<br/>
+      Clean loss: -1.00
+    </blockquote>
+    <p>
+      None of that is RL theory. It's scale design, and it's downstream of
+      what I want the policy to prefer. Want the policy to prefer fast
+      wins? Add a turn penalty. Want the policy to prefer surviving cleanly
+      over surviving barely? Make the terminal bonus proportional to HP
+      remaining. The agent's entire learned behavior is shaped by these
+      four lines of Python, and if I got any of them wrong, the policy
+      would optimize exactly what I specified and I'd have to go figure
+      out why. (I did, several times — there's a dedicated article on that
+      iteration.)
+    </p>
+  </section>
+
+  <div class="version-kicker">Agent + Environment</div>
+  <section id="stop-3-actor" class="iter-card">
+    <h2>Stop 3 — <code>actor_proxy.py</code> (the agent-environment loop)</h2>
+    <p>
+      The loop lives in <code>handle_connection</code> in
+      <code>src/bot/actor_proxy.py</code>. Most of the complexity is in
+      what it's wrapping — the environment is a patched Steam game and the
+      step takes hundreds of milliseconds — but the RL shape is a textbook
+      five-line loop:
+    </p>
+    <pre><code>{`while not done:
+    enc = encode_state(state, legal, card_vocab, enemy_vocab,
+                       relic_vocab, power_vocab)
+    action_idx, log_prob, _, value, _ = policy.get_action(enc)
+    result = env.step(action_index_to_dict(action_idx), ...)
+    reward = (tracker.terminal_reward(...) if result.done
+              else tracker.step_reward(result.state["player"]["hp"]))
+    if action_dict["type"] == "end_turn":
+        reward += tracker.turn_penalty()
+    raw_transitions.append({
+        "state": state, "legal_actions": legal,
+        "action": action_idx, "log_prob": step_log_prob,
+        "value": value.item(), "reward": reward, "done": result.done,
+    })
+    done = result.done
+    ...`}</code></pre>
+    <p>
+      Each transition is a dict with seven fields. At <code>done</code>,
+      the list is shipped to the learner over TCP.
+    </p>
+    <p>
+      The thing to carry from this stop into the PPO stop: this is an
+      <strong>on-policy</strong> algorithm. The rollouts the learner uses
+      for PPO have to come from the policy the learner is updating. The
+      actor has a copy of that policy, pulled from the learner
+      periodically; the knob for how periodically is
+      <code>WEIGHT_PULL_EVERY = 16</code>. Every sixteen episodes, the
+      actor pulls fresh weights. Too infrequent and the actor's policy
+      drifts far enough from the learner's that PPO's importance-sampling
+      ratio becomes nonsense; too frequent and the actors spend more time
+      on TCP than on combat.
+    </p>
+    <p>
+      Off-policy methods (DQN, SAC) sidestep the drift problem by
+      estimating action-values directly — they can train on any policy's
+      rollouts, at the cost of replay buffers, target networks, and a more
+      complicated set of moving parts. PPO's tradeoff is to stay on-policy
+      and bound the per-update policy shift; the simpler pipeline is what
+      I'd call this project's main reason for picking PPO, though I didn't
+      think that hard about it at the time.
+    </p>
+  </section>
+
+  <div class="version-kicker">PPO Update</div>
+  <section id="stop-4-learner" class="iter-card">
+    <h2>Stop 4 — <code>learner.py</code> (PPO itself)</h2>
+    <p>
+      <code>ppo_update</code> in <code>src/bot/learner.py</code> is where
+      everything above turns into a gradient step. The function body is
+      about 75 lines. The hyperparameter block at the top of the file is
+      the list of knobs. Two stanzas carry most of the weight.
+    </p>
+    <p>First, the clipped surrogate loss (<code>learner.py</code> lines 310–314):</p>
+    <pre><code>{`ratio    = (new_lp - mb_olp).exp()
+clipped  = ratio.clamp(1 - CLIP_EPS, 1 + CLIP_EPS)
+pi_loss  = -torch.min(ratio * mb_adv, clipped * mb_adv).mean()
+val_loss = F.mse_loss(values.squeeze(-1), mb_ret)
+loss     = pi_loss + VALUE_COEF * val_loss - ENTROPY_COEF * entropy`}</code></pre>
+    <p>
+      <code>ratio</code> is π_new(a|s) / π_old(a|s) for the action that was
+      taken in the rollout — new-policy probability over old-policy
+      probability, computed as <code>exp(new_log_prob - old_log_prob)</code>
+      for numerical sanity. <code>clipped</code> bounds it to
+      <code>[0.8, 1.2]</code> with <code>CLIP_EPS = 0.2</code>.
+      <code>torch.min(ratio * mb_adv, clipped * mb_adv)</code> is the move
+      that makes PPO "proximal." If the update helps and the policy wants
+      to move more than 20% — the clipped term caps the gradient. If the
+      update hurts — the unclipped term pays full penalty. Pessimistic
+      about gains, honest about losses. That asymmetry replaces the KL
+      constraint older methods (TRPO) enforce explicitly.
+    </p>
+    <p>
+      <code>val_loss</code> is MSE between the value head's prediction and
+      the GAE-computed return. The entropy bonus
+      (<code>-ENTROPY_COEF * entropy</code>) rewards the policy for not
+      collapsing onto one action too quickly.
+    </p>
+    <p>Second, <code>compute_gae</code> (lines 235–242):</p>
+    <pre><code>{`for t in reversed(range(n)):
+    tr    = transitions[t]
+    delta = tr.reward + GAMMA * nv * (0.0 if tr.done else 1.0) - tr.value
+    gae   = delta + GAMMA * GAE_LAMBDA * (0.0 if tr.done else 1.0) * gae
+    advs[t] = gae
+    rets[t] = gae + tr.value
+    nv = tr.value`}</code></pre>
+    <p>
+      Generalized Advantage Estimation is what produces the
+      <code>mb_adv</code> the surrogate multiplies against. Walk the
+      trajectory in reverse. <code>delta_t = r_t + γ·V_{`{`}t+1{`}`} − V_t</code>
+      is the one-step TD error — the amount the actual outcome beat the
+      value function's prediction. <code>A_t = δ_t + γ·λ·A_{`{`}t+1{`}`}</code>
+      smooths that error backward, weighted by <code>γ·λ</code> per step.
+      <code>GAE_LAMBDA = 0.95</code> is the bias-variance knob — at λ=1 the
+      advantage is the full Monte Carlo return minus the baseline
+      (unbiased, high variance); at λ=0 it's the one-step TD error (biased
+      by V's errors, low variance); 0.95 is what the original GAE paper
+      lands on and what virtually every PPO reference implementation uses.
+    </p>
+    <p>
+      The <code>(0.0 if tr.done else 1.0)</code> factors zero out the value
+      bootstrap across episode terminations. Without them the advantage
+      would leak across episode boundaries and the agent would train as if
+      death had value.
+    </p>
+  </section>
+
+  {/* Mid-article payoff — inline SVG PPO cycle */}
+  <span class="reveal-kicker" id="update-cycle">One update, start to finish</span>
+  <svg class="ppo-cycle" viewBox="0 0 680 170" xmlns="http://www.w3.org/2000/svg" role="img"
+       aria-label="Eight-step PPO update cycle: rollouts arrive, resize embeddings, compute GAE, normalize advantages, sample minibatches, forward pass, clip + backprop, optimizer step, then return to rollouts.">
+    <g class="ppo-cycle-g">
+      <rect class="pc-step" x="8"   y="50" width="78" height="40" rx="4"/>
+      <text class="pc-n"     x="47"  y="42" text-anchor="middle">1</text>
+      <text class="pc-lbl"   x="47"  y="68" text-anchor="middle">rollouts</text>
+      <text class="pc-lbl"   x="47"  y="82" text-anchor="middle">arrive</text>
+
+      <rect class="pc-step" x="94"  y="50" width="78" height="40" rx="4"/>
+      <text class="pc-n"     x="133" y="42" text-anchor="middle">2</text>
+      <text class="pc-lbl"   x="133" y="68" text-anchor="middle">resize</text>
+      <text class="pc-lbl"   x="133" y="82" text-anchor="middle">embeddings</text>
+
+      <rect class="pc-step" x="180" y="50" width="78" height="40" rx="4"/>
+      <text class="pc-n"     x="219" y="42" text-anchor="middle">3</text>
+      <text class="pc-lbl"   x="219" y="68" text-anchor="middle">compute</text>
+      <text class="pc-lbl"   x="219" y="82" text-anchor="middle">GAE</text>
+
+      <rect class="pc-step" x="266" y="50" width="78" height="40" rx="4"/>
+      <text class="pc-n"     x="305" y="42" text-anchor="middle">4</text>
+      <text class="pc-lbl"   x="305" y="68" text-anchor="middle">normalize</text>
+      <text class="pc-lbl"   x="305" y="82" text-anchor="middle">advantages</text>
+
+      <rect class="pc-step" x="352" y="50" width="78" height="40" rx="4"/>
+      <text class="pc-n"     x="391" y="42" text-anchor="middle">5</text>
+      <text class="pc-lbl"   x="391" y="68" text-anchor="middle">sample</text>
+      <text class="pc-lbl"   x="391" y="82" text-anchor="middle">minibatches</text>
+
+      <rect class="pc-step" x="438" y="50" width="78" height="40" rx="4"/>
+      <text class="pc-n"     x="477" y="42" text-anchor="middle">6</text>
+      <text class="pc-lbl"   x="477" y="68" text-anchor="middle">forward</text>
+      <text class="pc-lbl"   x="477" y="82" text-anchor="middle">pass</text>
+
+      <rect class="pc-step" x="524" y="50" width="78" height="40" rx="4"/>
+      <text class="pc-n"     x="563" y="42" text-anchor="middle">7</text>
+      <text class="pc-lbl"   x="563" y="68" text-anchor="middle">clip +</text>
+      <text class="pc-lbl"   x="563" y="82" text-anchor="middle">backprop</text>
+
+      <rect class="pc-step pc-final" x="610" y="50" width="62" height="40" rx="4"/>
+      <text class="pc-n"     x="641" y="42" text-anchor="middle">8</text>
+      <text class="pc-lbl"   x="641" y="68" text-anchor="middle">optimizer</text>
+      <text class="pc-lbl"   x="641" y="82" text-anchor="middle">.step()</text>
+
+      <path class="pc-arrow" d="M 86 70 L 94 70"/>
+      <path class="pc-arrow" d="M 172 70 L 180 70"/>
+      <path class="pc-arrow" d="M 258 70 L 266 70"/>
+      <path class="pc-arrow" d="M 344 70 L 352 70"/>
+      <path class="pc-arrow" d="M 430 70 L 438 70"/>
+      <path class="pc-arrow" d="M 516 70 L 524 70"/>
+      <path class="pc-arrow" d="M 602 70 L 610 70"/>
+
+      <path class="pc-return" d="M 641 90 C 641 135, 47 135, 47 90"/>
+      <text class="pc-return-lbl" x="344" y="155" text-anchor="middle">next 16 episodes</text>
+    </g>
+  </svg>
+  <p class="orienting">Every 16 episodes, this cycle runs once.</p>
+  <p>
+    1. Rollouts arrive on TCP. 2. <code>resize_embeddings</code> grows
+    tables if vocabs expanded. 3. <code>compute_gae</code> produces
+    advantages and returns. 4. Advantages normalized across the full batch.
+    5. Shuffle indices, minibatches of 64. 6. Forward pass per minibatch.
+    7. Clipped loss + value MSE + entropy → backprop → <code>clip_grad_norm</code>.
+    8. <code>optimizer.step()</code>.
+  </p>
+  <p>
+    Four passes (<code>PPO_EPOCHS = 4</code>) through the batch before the
+    rollouts are too stale to reuse. Every sixteen episodes
+    (<code>EPISODES_PER_UPDATE = 16</code>), this cycle runs once.
+  </p>
+
+  <h2 id="hyperparameters">Hyperparameters</h2>
+  <table class="breakdown">
+    <tr><th>Constant</th><th style="text-align:right">Value</th><th>Why</th></tr>
+    <tr><td><code>GAMMA</code></td><td class="dims">0.99</td><td>Standard RL discount; episodes are short, far-future contribution near zero.</td></tr>
+    <tr><td><code>GAE_LAMBDA</code></td><td class="dims">0.95</td><td>PPO-paper default. Bias-variance compromise.</td></tr>
+    <tr><td><code>CLIP_EPS</code></td><td class="dims">0.2</td><td>PPO-paper default. Max 20% policy move per update.</td></tr>
+    <tr><td><code>VALUE_COEF</code></td><td class="dims">0.5</td><td>PPO-paper default. Weight of the value-loss term.</td></tr>
+    <tr><td><code>ENTROPY_COEF</code></td><td class="dims">0.04</td><td>Higher than the usual 0.01 — 61-logit masked action space has low effective entropy.</td></tr>
+    <tr><td><code>LR</code></td><td class="dims">3e-4</td><td>Default for Adam on a small net.</td></tr>
+    <tr><td><code>MAX_GRAD_NORM</code></td><td class="dims">0.5</td><td>Prevents a pathological batch from kicking the policy past the clip range.</td></tr>
+    <tr><td><code>PPO_EPOCHS</code></td><td class="dims">4</td><td>Four passes before rollouts are too off-policy to reuse.</td></tr>
+  </table>
+  <p>
+    Seven of eight are PPO-paper defaults. The one I tuned is
+    <code>ENTROPY_COEF</code>. Per-step masking means the policy
+    distribution is usually over 5–15 legal actions rather than 61, so the
+    raw entropy term is smaller than what the Atari-benchmark-tuned
+    default assumes. Multiplying by roughly 4× puts the exploration
+    pressure back where the paper had it, which is about the least
+    interesting tune I've ever made — and the only one that mattered.
+  </p>
+
+  <h2 id="takeaways">What I'd tell someone learning RL from this project</h2>
+  <ol>
+    <li>
+      Start with <code>reward.py</code>. It's the smallest file and the
+      most load-bearing — every behavior the agent ever learns is
+      downstream of this scalar.
+    </li>
+    <li>
+      Read <code>actor_proxy.py::handle_connection</code> next. The
+      five-line loop is the clearest way to see how RL actually runs;
+      everything upstream feeds it, everything downstream consumes it.
+    </li>
+    <li>
+      Then <code>model.py</code>. Skip <code>encode_state</code> on the
+      first read. Start at <code>StsPolicy.forward</code> — that's the
+      part that maps state to <code>(logits, value)</code>.
+    </li>
+    <li>
+      Save <code>learner.py::ppo_update</code> for last. With the other
+      three files loaded, it reads as a 75-line script end to end.
+    </li>
+  </ol>
+</Post>

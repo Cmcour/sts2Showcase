@@ -5,31 +5,63 @@ const base = import.meta.env.BASE_URL;
 const posts = [
   {
     slug: 'reward-shaping',
-    title: 'Reward Shaping: Teaching an Agent What Winning Means',
-    date: 'April 2026',
-    excerpt: 'How I designed the reward function to balance winning, preserving HP, and not stalling — and the surprising ways the agent exploited each version.',
+    title: 'Reward Shaping: Every Iteration Got Gamed',
+    date: '2026-04-18',
+    category: 'What I Learned',
+    excerpt: 'The reward function is the single most important design decision in an RL system. Every version I wrote was exploited by the agent in some surprising way, and I had to iterate three times before landing on a reward that produced the behavior I actually wanted.',
   },
   {
     slug: 'curriculum-design',
-    title: 'Why Curriculum Learning Was Essential',
-    date: 'April 2026',
-    excerpt: 'The agent couldn\'t learn anything useful when thrown into the deep end. A 13-stage curriculum made all the difference.',
+    title: 'Curriculum Learning: You Can\u2019t Skip the Basics',
+    date: '2026-04-18',
+    category: 'What I Learned',
+    excerpt: 'I spent weeks trying to train an agent on the full game before giving up and building a curriculum. The curriculum version reached higher performance on the full game in days than my direct approach reached in weeks.',
+  },
+  {
+    slug: 'distributed-deployment',
+    title: 'Distributed Deployment on Windows \u2014 Death by a Thousand Papercuts',
+    date: '2026-04-19',
+    category: 'What I Learned',
+    excerpt: 'Windows is a hostile environment for distributed training, and every approach I tried had a non-obvious failure mode. The thing that eventually worked is weirder than the thing I\u2019d have picked if I started over.',
+  },
+  {
+    slug: 'input-vector',
+    title: 'Input Vector Design \u2014 One-Hot Was a Trap',
+    date: '2026-04-19',
+    category: 'What I Learned',
+    excerpt: 'How the input vector got from ~1500 dimensions to 583, and how I found the second trap by accident \u2014 not by design.',
+  },
+  {
+    slug: 'monitoring',
+    title: 'Monitoring: \u201cOnline\u201d Is Not the Same as \u201cWorking\u201d',
+    date: '2026-04-19',
+    category: 'What I Learned',
+    excerpt: 'I built a training dashboard early and thought I was monitoring my fleet. I was not. The dashboard happily reported 11 workers \u201cOnline\u201d while 6 of them were dead for 47 minutes. Monitoring that doesn\u2019t reflect reality is worse than no monitoring \u2014 it gives you false confidence.',
   },
 ];
 ---
 <Base title="What I Learned" activeTab="learned">
-  <h1>What I Learned</h1>
-  <p class="hero-subtitle">Lessons from building a reinforcement learning system for a complex card game.</p>
+  <main class="frame">
+    <div class="index-head">
+      <h1>What I Learned</h1>
+      <p class="sub">Lessons from building a reinforcement learning system for a complex card game.</p>
+    </div>
 
-  <ul class="post-list">
-    {posts.map(post => (
-      <li class="post-item">
-        <a href={`${base}learned/${post.slug}/`}>
-          <div class="post-title">{post.title}</div>
-          <div class="post-date">{post.date}</div>
-          <div class="post-excerpt">{post.excerpt}</div>
-        </a>
-      </li>
-    ))}
-  </ul>
+    <ul class="post-list">
+      {posts.map(post => (
+        <li class="post-item">
+          <a href={`${base}learned/${post.slug}/`}>
+            <div class="post-kicker">{post.category}</div>
+            <div class="post-top">
+              <div class="post-title">{post.title}</div>
+              <span class="post-date">{post.date}</span>
+            </div>
+            <p class="post-lede">{post.excerpt}</p>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </main>
 </Base>
+
+<!-- _v5 Workshop Warm blog index — amber kicker, bold title, dim lede, mono date right. 2026-04-18_ -->

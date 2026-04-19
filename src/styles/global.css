@@ -1,189 +1,1995 @@
+/* ───────────────────────────────────────────────────────────────
+   STS2 RL Showcase — global styles (v5 Workshop Warm)
+   Ported from drafts/dd/accepted/layout-v5-workshop-warm-*.html.
+   System-font stack only — no webfonts shipped.
+   ─────────────────────────────────────────────────────────────── */
+
 :root {
-  --bg: #0d1117;
-  --surface: #161b22;
-  --border: #30363d;
-  --text: #c9d1d9;
-  --dim: #8b949e;
-  --accent: #58a6ff;
-  --green: #3fb950;
-  --red: #f85149;
-  --yellow: #d29922;
-  --purple: #bc8cff;
+  /* Palette — warm-dark "lamp-lit workshop" */
+  --bg:          #14110d;
+  --surface:     #1e1a15;
+  --surface-2:   #262017;
+  --border:      #3a3228;
+  --text:        #ece4d8;
+  --text-dim:    #a79b89;
+  --dim:         #a79b89; /* alias — legacy callers */
+  --accent:      #f0a648;
+  --accent-soft: rgba(240, 166, 72, 0.12);
+  --accent-deep: #c77f2f;
+
+  /* Semantic — warmed into the palette */
+  --green:  #a3c174;
+  --red:    #d46a5a;
+  --yellow: #e3c067;
+  --purple: #b197d8;
+
+  /* Type stacks — system only */
+  --sans: ui-sans-serif, -apple-system, "Segoe UI Variable", "Segoe UI", Inter, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Consolas, monospace;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-body {
+html, body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  line-height: 1.6;
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.7;
 }
 
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-/* ── Nav ── */
-nav {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding: 0 24px;
+/* ── Nav (v5: 52px sticky, amber-underline active tab) ─────── */
+nav.nav {
   position: sticky;
   top: 0;
   z-index: 100;
-}
-.nav-inner {
-  max-width: 900px;
-  margin: 0 auto;
+  height: 52px;
   display: flex;
   align-items: center;
-  gap: 32px;
-  height: 56px;
+  justify-content: space-between;
+  padding: 0 28px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
 }
 .nav-brand {
   font-weight: 700;
-  font-size: 16px;
+  font-size: 1rem;
   color: var(--text);
   white-space: nowrap;
 }
-.nav-links {
+.nav-brand:hover { text-decoration: none; }
+.nav-brand .dot { color: var(--accent); }
+.nav-tabs {
   display: flex;
   gap: 4px;
-  list-style: none;
 }
-.nav-links a {
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 14px;
-  color: var(--dim);
-  transition: background 0.15s, color 0.15s;
+.nav-tab {
+  padding: 0 14px;
+  height: 52px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-dim);
+  font-weight: 500;
+  font-size: 0.9375rem;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
 }
-.nav-links a:hover {
-  background: rgba(88,166,255,0.08);
+.nav-tab:hover {
   color: var(--text);
   text-decoration: none;
 }
-.nav-links a.active {
-  color: var(--accent);
-  background: rgba(88,166,255,0.12);
+.nav-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
 }
 
-/* ── Main content ── */
-main {
-  max-width: 900px;
+/* ── Frames ────────────────────────────────────────────────── */
+.frame {
+  max-width: 1040px;
   margin: 0 auto;
-  padding: 40px 24px 80px;
+  padding: 56px 24px 96px;
+}
+/* .col = the 680px reading measure dropped into the 1040 frame */
+.col {
+  max-width: 680px;
+  margin: 0 auto;
 }
 
-/* ── Typography ── */
-h1 { font-size: 32px; margin-bottom: 8px; color: var(--text); }
-h2 { font-size: 24px; margin: 40px 0 16px; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
-h3 { font-size: 18px; margin: 24px 0 12px; color: var(--text); }
-p { margin-bottom: 16px; color: var(--dim); }
-ul, ol { margin: 0 0 16px 24px; color: var(--dim); }
-li { margin-bottom: 6px; }
-strong { color: var(--text); }
-code {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 13px;
-}
-pre {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 16px;
-  overflow-x: auto;
-  margin-bottom: 16px;
-}
-pre code {
-  border: none;
-  padding: 0;
-  background: none;
-}
-img {
-  max-width: 100%;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-}
-blockquote {
-  border-left: 3px solid var(--accent);
-  padding-left: 16px;
+/* ── Typography ────────────────────────────────────────────── */
+h1 {
+  font-size: 2.5rem;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  color: var(--text);
   margin: 0 0 16px;
-  color: var(--dim);
 }
-
-/* ── Blog list ── */
-.post-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+h2 {
+  font-size: 1.625rem;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  line-height: 1.2;
+  color: var(--text);
+  margin: 64px 0 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
 }
-.post-item {
-  padding: 20px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-bottom: 12px;
-  transition: border-color 0.15s;
-}
-.post-item:hover {
-  border-color: var(--accent);
-}
-.post-item a {
-  text-decoration: none;
-}
-.post-title {
-  font-size: 18px;
+h3 {
+  font-size: 1.1875rem;
   font-weight: 600;
   color: var(--text);
-  margin-bottom: 4px;
+  margin: 36px 0 10px;
 }
-.post-date {
-  font-size: 13px;
-  color: var(--dim);
-  margin-bottom: 8px;
+p {
+  margin: 0 0 20px;
+  color: var(--text);
 }
-.post-excerpt {
-  font-size: 14px;
-  color: var(--dim);
+p strong { color: var(--text); font-weight: 700; }
+
+ul, ol {
+  margin: 0 0 20px 1.15rem;
+  color: var(--text);
+}
+li { margin-bottom: 8px; }
+li strong { color: var(--text); font-weight: 700; }
+
+ul.plain { list-style: disc; margin: 0 0 20px 1.15rem; padding: 0; }
+ul.plain li { margin: 0 0 8px; }
+
+strong { color: var(--text); }
+
+/* ── Inline code / code blocks ─────────────────────────────── */
+code {
+  font-family: var(--mono);
+  font-size: 0.875em;
+  background: var(--accent-soft);
+  color: var(--text);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: none;
+}
+pre {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 16px 18px;
+  overflow-x: auto;
+  margin: 22px 0;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+pre[data-file]::before {
+  content: attr(data-file);
+  position: absolute;
+  top: 6px;
+  right: 12px;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  color: var(--accent-deep);
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+pre code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
 }
 
-/* ── Tags ── */
+/* ── Images ────────────────────────────────────────────────── */
+img {
+  max-width: 100%;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  display: block;
+}
+
+/* ── Blockquote (rarely used; amber rule on warm surface) ── */
+blockquote {
+  border-left: 3px solid var(--accent);
+  background: var(--surface);
+  padding: 12px 16px;
+  margin: 20px 0;
+  color: var(--text);
+}
+
+/* ── Tag pills (amber-soft fill, bordered, rounded) ────────── */
 .tag-row {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  margin: 16px 0;
+  margin: 0;
 }
 .tag {
+  display: inline-block;
+  padding: 5px 11px;
+  font-size: 0.8125rem;
+  color: var(--text);
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+/* ── Split hero (home only) ───────────────────────────────── */
+.hero-split {
+  display: grid;
+  grid-template-columns: 1.45fr 1fr;
+  gap: 40px;
+  margin-bottom: 40px;
+  padding-bottom: 36px;
+  border-bottom: 1px solid var(--border);
+}
+.hero-left h1 { margin: 0 0 16px; }
+.hero-left .sub {
+  font-size: 1.0625rem;
+  color: var(--text-dim);
+  line-height: 1.6;
+  max-width: 52ch;
+  margin: 0 0 22px;
+}
+.hero-right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hero-right .pre-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+/* ── Warm results tile ────────────────────────────────────── */
+.tile {
   background: var(--surface);
   border: 1px solid var(--border);
-  padding: 4px 12px;
-  border-radius: 16px;
-  font-size: 12px;
-  color: var(--dim);
+  border-radius: 6px;
+  padding: 16px 18px 14px;
+  position: relative;
+}
+.tile-num {
+  font-family: var(--mono);
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.1;
+}
+.tile-num::after {
+  content: "";
+  display: block;
+  width: 48px;
+  height: 2px;
+  background: var(--accent-deep);
+  margin-top: 6px;
+}
+.tile-lbl {
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+  margin-top: 10px;
+}
+.tile-delta {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--green);
+  margin-top: 6px;
 }
 
-/* ── Hero ── */
-.hero-subtitle {
-  font-size: 18px;
-  color: var(--dim);
-  margin-bottom: 24px;
-}
+/* ── Hero image ───────────────────────────────────────────── */
 .hero-img {
-  margin: 24px 0;
+  margin: 0 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.hero-img img {
+  border: none;
+  border-radius: 0;
+  width: 100%;
+  display: block;
+}
+.fig-cap {
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  margin: 0 0 40px;
+  padding-left: 2px;
+  border-bottom: 1px solid var(--accent-soft);
+  padding-bottom: 10px;
+  width: max-content;
+  max-width: 100%;
 }
 
-/* ── Back link ── */
-.back-link {
-  display: inline-block;
-  margin-bottom: 24px;
-  font-size: 14px;
-  color: var(--dim);
+/* ── Warm stepper (curriculum) ───────────────────────────── */
+.stepper {
+  margin: 8px 0 12px;
+  border-left: 1px solid var(--border);
+  padding: 2px 0;
 }
-.back-link:hover {
+.stepper-row {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 20px;
+  padding: 14px 0 14px 20px;
+  position: relative;
+}
+.stepper-row + .stepper-row { border-top: 1px dashed var(--border); }
+.stepper-row::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 22px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--accent);
+}
+.stepper-key {
+  font-family: var(--mono);
+  font-size: 0.875rem;
+  color: var(--accent-deep);
+  padding-top: 2px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.stepper-val { color: var(--text); }
+
+/* ── Callouts ────────────────────────────────────────────── */
+.callout {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  padding: 16px 18px;
+  margin: 24px 0;
+  font-size: 0.9375rem;
+}
+.callout.caveat { border-left-color: var(--yellow); }
+.callout.result { border-left-color: var(--green); }
+.callout.gotcha { border-left-color: var(--red); }
+.callout-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
   color: var(--accent);
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+.callout.caveat .callout-label { color: var(--yellow); }
+.callout.result .callout-label { color: var(--green); }
+.callout.gotcha .callout-label { color: var(--red); }
+
+/* ── Post page layout (680 article + 220 right-rail TOC) ── */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 40px;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 48px 24px 96px;
+}
+.layout article {
+  max-width: 680px;
+  margin: 0 auto;
+  min-width: 0;
+}
+.layout article h1 {
+  font-size: 2.5rem;
+  line-height: 1.12;
+  letter-spacing: -0.018em;
+  margin: 0 0 12px;
+}
+
+/* Back-to-index link (reused for post + elsewhere) */
+.back,
+.back-link {
+  color: var(--text-dim);
+  font-size: 0.875rem;
+  margin-bottom: 20px;
+  display: inline-block;
+}
+.back:hover,
+.back-link:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* Post meta row: amber kicker pill · date · reading time */
+.meta-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  margin: 0 0 30px;
+  font-family: var(--mono);
+  flex-wrap: wrap;
+}
+.meta-sep { opacity: 0.5; }
+.kicker {
+  display: inline-block;
+  padding: 2px 10px;
+  font-size: 0.75rem;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+  border: 1px solid var(--accent-soft);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  font-family: var(--sans);
+}
+
+/* Right-rail sticky TOC */
+aside.toc {
+  position: sticky;
+  top: 72px;
+  align-self: start;
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+  border-left: 1px solid var(--border);
+  padding: 0 0 0 16px;
+}
+aside.toc h4 {
+  margin: 0 0 10px;
+  color: var(--accent);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+}
+aside.toc a {
+  display: block;
+  color: var(--text-dim);
+  padding: 5px 0;
+  line-height: 1.4;
+  font-family: var(--sans);
+}
+aside.toc a:hover { color: var(--text); text-decoration: none; }
+aside.toc a.active { color: var(--accent); font-weight: 600; }
+
+@media (max-width: 1099px) {
+  .layout { grid-template-columns: 1fr; }
+  aside.toc { display: none; }
+}
+
+/* ── Blog index treatment (v5: amber kicker, bold title, dim lede, mono date right) ── */
+.index-head {
+  max-width: 680px;
+  margin: 0 auto 24px;
+}
+.index-head .sub {
+  font-size: 1.0625rem;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin: 0 0 24px;
+}
+.post-list {
+  max-width: 680px;
+  margin: 0 auto;
+  list-style: none;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.post-item {
+  list-style: none;
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  padding: 22px 18px 22px 15px;
+  transition: border-left-color 0.15s, background 0.15s;
+}
+.post-item:hover {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+.post-item:hover .post-kicker { color: var(--accent-deep); }
+.post-item a {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+.post-item a:hover { text-decoration: none; }
+.post-kicker {
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.post-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.post-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+  margin: 0;
+}
+.post-date {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  margin: 0;
+}
+.post-lede,
+.post-excerpt {
+  font-size: 0.9375rem;
+  color: var(--text-dim);
+  margin: 6px 0 0;
+  line-height: 1.55;
+}
+
+/* ── Legacy hero-subtitle (kept for blog index heads) ───── */
+.hero-subtitle {
+  font-size: 1.0625rem;
+  color: var(--text-dim);
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+
+/* ── Responsive: split hero collapses below 760px ───────── */
+@media (max-width: 759px) {
+  .hero-split { grid-template-columns: 1fr; gap: 28px; }
+  h1 { font-size: 2rem; }
+  .layout article h1 { font-size: 2rem; }
+  .frame { padding: 40px 20px 72px; }
+  nav.nav { padding: 0 16px; }
+  .nav-tab { padding: 0 10px; font-size: 0.875rem; }
+}
+
+/* ── v5 Split-Card Ledger additions (article-level components) ──
+   Scoped class names — additive only. Existing v5 Workshop Warm rules
+   above are untouched. Introduced 2026-04-18 for the reward-shaping
+   article implementation (pipeline stage 4).
+   ───────────────────────────────────────────────────────────────── */
+
+/* Soft semantic wash colors, warmed into the palette */
+:root {
+  --green-soft: rgba(163, 193, 116, 0.08);
+  --red-soft:   rgba(212, 106, 90, 0.08);
+}
+
+/* Article hero — 1.4fr / 1fr split (deck left, tiles right) */
+.article-hero {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 32px;
+  align-items: start;
+  padding-bottom: 32px;
+  margin: 0 0 36px;
+  border-bottom: 1px solid var(--border);
+}
+.article-hero .hero-left .deck {
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--text-dim);
+  max-width: 52ch;
+  margin: 0;
+}
+.article-hero .hero-right {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.article-hero .pre-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+/* Prominent tile — bigger number, heavier underline */
+.tile.tile-prominent {
+  padding: 20px 22px 18px;
+}
+.tile.tile-prominent .tile-num {
+  font-size: 2.25rem;
+  line-height: 1.05;
+}
+.tile.tile-prominent .tile-num::after {
+  width: 64px;
+  margin-top: 8px;
+}
+
+/* Mini-chip grid: four compact number+label cards */
+.tile-mini-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+.tile-mini {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tile-mini .num {
+  font-family: var(--mono);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.15;
+}
+.tile-mini .lbl {
+  font-size: 0.6875rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+}
+
+/* Amber kicker above each iteration card */
+.version-kicker {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+  margin: 28px 0 6px;
+}
+
+/* Iteration card — full border, contains h2 + 2-col panel grid */
+.iter-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 22px 24px 20px;
+  margin: 0 0 28px;
+  background: transparent;
+}
+.iter-card > h2 {
+  font-size: 1.375rem;
+  margin: 0 0 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.iter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-top: 14px;
+  align-items: stretch;
+}
+.panel {
+  padding: 14px 16px;
+  border-radius: 4px;
+  font-size: 0.9375rem;
+  min-height: 100%;
+}
+.panel p,
+.panel ul {
+  font-size: 0.9375rem;
+}
+.panel p:last-child { margin-bottom: 0; }
+.panel ul { margin: 0 0 10px 1.1rem; }
+.panel li { margin-bottom: 4px; }
+
+/* Small-caps label at the top of each panel; color per-variant */
+.panel-label {
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+/* "What I did" panel — neutral, left border subtle */
+.what-i-did {
+  background: transparent;
+  border-left: 2px solid var(--border);
+}
+.what-i-did .panel-label { color: var(--text-dim); }
+
+/* "What went wrong" panel — red wash */
+.what-broke {
+  background: var(--red-soft);
+  border-left: 2px solid var(--red);
+}
+.what-broke .panel-label { color: var(--red); }
+
+/* "What worked" panel — green wash */
+.what-worked {
+  background: var(--green-soft);
+  border-left: 2px solid var(--green);
+}
+.what-worked .panel-label { color: var(--green); }
+
+/* Mono result chip below each card */
+.result-chip {
+  display: inline-flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  margin-top: 16px;
+}
+.result-chip .num { color: var(--text); font-weight: 700; }
+.result-chip .lbl { color: var(--text-dim); }
+
+/* Responsive fallback: below 760, cards stack into one column */
+@media (max-width: 759px) {
+  .article-hero { grid-template-columns: 1fr; gap: 24px; }
+  .iter-grid { grid-template-columns: 1fr; gap: 14px; }
+  .tile-mini-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── v5 Spine-with-Diptych-Hero additions (curriculum-learning article) ──
+   Scoped additive rules — NOT touching Workshop Warm base, reward-shaping
+   split-card rules, or any prior selector. Introduced 2026-04-18 for the
+   curriculum-learning article implementation (pipeline stage 4).
+   ─────────────────────────────────────────────────────────────────────── */
+
+/* Section kicker above narrative cards (amber small-caps) */
+.section-kicker {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+/* Compact diptych hero — red/green before/after panels with amber arrow */
+.diptych-wrap {
+  position: relative;
+  margin: 0 0 32px;
+}
+.diptych {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.dpanel {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 18px 18px 16px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.dpanel.bad {
+  background: var(--red-soft);
+  border-left: 3px solid var(--red);
+}
+.dpanel.good {
+  background: var(--green-soft);
+  border-left: 3px solid var(--green);
+}
+.dpanel .d-label {
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.dpanel.bad .d-label { color: var(--red); }
+.dpanel.good .d-label { color: var(--green); }
+.dpanel h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 8px;
+  line-height: 1.3;
+}
+.dpanel ul {
+  margin: 0 0 12px 1.05rem;
+  font-size: 0.8125rem;
+}
+.dpanel li {
+  margin-bottom: 4px;
+  color: var(--text);
+  line-height: 1.45;
+}
+.dpanel .d-stat {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.dpanel .d-num {
+  font-family: var(--mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.dpanel.bad .d-num { color: var(--red); }
+.dpanel.good .d-num { color: var(--green); }
+.dpanel .d-ntext {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  line-height: 1.3;
+}
+
+.diptych-arrow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--accent-deep);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 1.125rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Narrative card — bordered, padded, wraps each body section */
+.narr-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 22px 24px 18px;
+  margin: 0 0 24px;
+}
+.narr-card > h2 {
+  margin-top: 0;
+  font-size: 1.5rem;
+  line-height: 1.22;
+}
+.narr-card > h2:first-child { margin-top: 0; }
+
+/* Red result chip modifier (base .result-chip already exists above) */
+.result-chip.bad { border-color: var(--red); }
+.result-chip.bad .num { color: var(--red); font-weight: 700; }
+
+/* Amber-soft pull-quote for the aphorism */
+.pullquote {
+  margin: 28px 0 32px;
+  padding: 18px 22px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  font-size: 1.0625rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+.pullquote strong { color: var(--accent); font-weight: 700; }
+
+/* Stage-detail row — mono number column, amber-deep underline, short copy */
+.stage-detail {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin: 0 0 14px;
+  background: var(--surface);
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+.stage-detail .num {
+  font-family: var(--mono);
+  font-size: 1.5rem;
+  color: var(--accent);
+  font-weight: 700;
+  line-height: 1.05;
+}
+.stage-detail .num::after {
+  content: "";
+  display: block;
+  width: 28px;
+  height: 2px;
+  background: var(--accent-deep);
+  margin-top: 6px;
+}
+.stage-detail h3 {
+  margin: 0 0 6px;
+  font-size: 0.9375rem;
+}
+.stage-detail .desc {
+  font-size: 0.875rem;
+  color: var(--text-dim);
+  margin: 0 0 4px;
+  line-height: 1.5;
+}
+.stage-detail .desc strong { color: var(--text); }
+
+/* Responsive: diptych stacks below 760 */
+@media (max-width: 759px) {
+  .diptych { grid-template-columns: 1fr; }
+  .diptych-arrow { display: none; }
+  .stage-detail { grid-template-columns: 42px 1fr; gap: 10px; }
+}
+
+/* ── v3 Fleet Grid + Final Stack additions (article-level components) ──
+   Scoped class names — additive only. Existing Workshop Warm, split-card,
+   diptych, and spine rules above are untouched. Introduced 2026-04-18 for
+   the distributed-deployment article implementation (pipeline stage 4).
+   ───────────────────────────────────────────────────────────────────── */
+
+/* Fleet-grid kicker (small amber mono label above the grid) */
+.fleet-kicker {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+  margin: 0 0 10px;
+}
+
+/* Fleet grid — 4-col roster of worker tiles */
+.fleet-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 0 0 28px;
+}
+.fleet-tile {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 78px;
+  justify-content: space-between;
+}
+.fleet-tile.incident {
+  background: rgba(212, 106, 90, 0.12);
+  border-color: var(--red);
+}
+.fleet-tile.placeholder {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--border);
+  opacity: 0.45;
+}
+.ft-name {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+.ft-host {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  color: var(--text-dim);
+}
+.ft-status {
+  align-self: flex-start;
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 3px;
+  line-height: 1.5;
+}
+.fleet-tile.ready .ft-status {
+  color: var(--green);
+  background: var(--green-soft);
+}
+.fleet-tile.incident .ft-status {
+  color: var(--red);
+  background: rgba(212, 106, 90, 0.2);
+}
+
+/* Chain diagram — mid-article structural anchor for the launch chain */
+.chain-diagram {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 20px 24px 22px;
+  margin: 18px 0 32px;
+}
+.cd-caption {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+.chain-diagram pre {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre;
+  overflow-x: auto;
+  text-align: left;
+}
+.cd-weird {
+  color: var(--accent);
+  font-weight: 700;
+}
+.cd-note {
+  color: var(--accent-deep);
+}
+
+/* Takeaways grid — 5 compact text-first chips at the close of the post */
+.takeaways-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin: 18px 0 28px;
+}
+.takeaways-grid .tg-tile {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.takeaways-grid .tg-n {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+}
+.takeaways-grid .tg-lbl {
+  font-size: 0.8125rem;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+/* Responsive: fleet grid → 2-col, takeaways-grid → 2-col, below 760 */
+@media (max-width: 759px) {
+  .fleet-grid { grid-template-columns: repeat(2, 1fr); }
+  .takeaways-grid { grid-template-columns: repeat(2, 1fr); }
+  .chain-diagram { padding: 16px 16px 18px; }
+  .chain-diagram pre { font-size: 0.75rem; }
+}
+
+/* ── v6 Trap-Gated Payoff additions (input-vector article) ──
+   Scoped additive rules — NOT touching Workshop Warm, split-card,
+   diptych/spine, or fleet-grid/chain-diagram sections above. Introduced
+   2026-04-19 for the input-vector article implementation (pipeline
+   stage 4). Primitives: .orienting caption, .trap family, .reveal-kicker,
+   .vector-decomp + .vec-segment family, table.breakdown, table.caps.
+   ─────────────────────────────────────────────────────────────────── */
+
+/* Italic, dim orienting caption that sits directly below the diptych */
+.orienting {
+  font-style: italic;
+  font-size: 0.875rem;
+  color: var(--text-dim);
+  margin: 0 0 36px;
+  max-width: 58ch;
+}
+
+/* Trap callout — body-embedded, left-border colored by subclass */
+.trap {
+  position: relative;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  padding: 16px 18px 14px;
+  margin: 22px 0;
+  background: var(--surface);
+  font-size: 0.9375rem;
+}
+.trap-severity {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 3px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.trap-headline {
+  display: block;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 8px;
+  max-width: 44ch;
+  line-height: 1.4;
+  padding-right: 90px;
+}
+.trap p {
+  margin: 0 0 10px;
+  font-size: 0.9375rem;
+  color: var(--text);
+}
+.trap p:last-of-type { margin-bottom: 0; }
+.trap-fix {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+.trap-fix strong { color: var(--accent); font-weight: 700; }
+
+/* Trap subclass — bloat (red, used for Trap 1 · one-hot) */
+.trap.onehot {
+  border-left-color: var(--red);
+  background: rgba(212, 106, 90, 0.08);
+}
+.trap.onehot .trap-severity {
+  color: var(--red);
+  background: rgba(212, 106, 90, 0.18);
+}
+.trap.onehot .trap-fix strong { color: var(--red); }
+
+/* Trap subclass — silent (yellow, used for Trap 2 · normalization bounds) */
+.trap.silent {
+  border-left-color: var(--yellow);
+  background: rgba(227, 192, 103, 0.07);
+}
+.trap.silent .trap-severity {
+  color: var(--yellow);
+  background: rgba(227, 192, 103, 0.18);
+}
+.trap.silent .trap-fix strong { color: var(--yellow); }
+
+/* Reveal-kicker — amber mono small-caps label above the payoff hero */
+.reveal-kicker {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+  margin: 28px 0 8px;
+}
+
+/* Vector-decomp — proportional-width 6-segment bar */
+.vector-decomp {
+  display: flex;
+  width: 100%;
+  height: 72px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface);
+  margin: 0;
+}
+.vec-segment,
+.decomp-seg {
+  border-right: 1px solid var(--border);
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 56px;
+  overflow: hidden;
+}
+.vec-segment:last-child,
+.decomp-seg:last-child { border-right: 0; }
+.vec-num {
+  font-family: var(--mono);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+.vec-lbl {
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vec-segment.player   { background: var(--surface); }
+.vec-segment.hand     { background: var(--accent-soft); }
+.vec-segment.hand .vec-num { color: var(--accent); }
+.vec-segment.enemies  { background: rgba(240, 166, 72, 0.07); }
+.vec-segment.piles    { background: var(--surface-2); }
+.vec-segment.relics   { background: var(--surface-2); }
+.vec-segment.powers   { background: var(--surface-2); }
+.vec-caption-bottom {
+  font-style: italic;
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+  margin: 8px 0 20px;
+}
+
+/* Breakdown table — 6 rows + total, dims column right-aligned mono */
+table.breakdown,
+table.caps {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  margin: 10px 0 24px;
+}
+table.breakdown th,
+table.caps th {
+  font-size: 0.6875rem;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 700;
+}
+table.breakdown td,
+table.caps td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: baseline;
+}
+table.breakdown td.dims,
+table.caps td.cap {
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--accent);
+  text-align: right;
+  width: 90px;
+}
+table.breakdown tr.total td {
+  border-bottom: 0;
+  padding-top: 10px;
+  font-weight: 700;
+}
+table.breakdown tr.total td.dims {
+  color: var(--green);
+  font-size: 1rem;
+}
+
+/* Responsive: below 760, the vector-decomp stacks segments vertically */
+@media (max-width: 759px) {
+  .vector-decomp {
+    flex-direction: column;
+    height: auto;
+  }
+  .vec-segment,
+  .decomp-seg {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    min-height: 48px;
+  }
+  .vec-segment:last-child,
+  .decomp-seg:last-child { border-bottom: 0; }
+  .trap-headline { padding-right: 0; }
+  .trap-severity {
+    position: static;
+    display: inline-block;
+    margin-bottom: 8px;
+  }
+}
+
+/* ── v1 Dashboard-Lie Diptych additions (monitoring article) ──
+   Scoped additive rules — NOT touching Workshop Warm base, reward-shaping
+   split-card, spine-with-diptych, fleet-grid, or trap-gated sections
+   above. Introduced 2026-04-19 for the monitoring article implementation
+   (pipeline stage 4). Primitives: .dpanel.lie / .dpanel.truth modifiers,
+   .dashboard-mini + .dash-row family, .anomaly-flag, .diptych-arrow.labeled,
+   .deck .em-amber.
+   ─────────────────────────────────────────────────────────────────── */
+
+/* Palette extensions: neutral grey wash (for "stale") and stronger red wash */
+:root {
+  --grey-soft: rgba(167, 155, 137, 0.12);
+  --red-wash:  rgba(212, 106, 90, 0.12);
+}
+
+/* Dpanel variants used by the monitoring hero. The existing .dpanel shell
+   and the .bad / .good modifiers remain untouched. */
+.dpanel.lie {
+  background: var(--red-soft);
+  border-left: 3px solid var(--red);
+}
+.dpanel.truth {
+  background: transparent;
+  border-left: 3px solid var(--border);
+}
+.dpanel.lie .d-label { color: var(--red); }
+.dpanel.truth .d-label { color: var(--text-dim); }
+.dpanel.lie .d-num { color: var(--red); }
+.dpanel.truth .d-num { color: var(--text); }
+
+/* Dashboard-mini — stylized fake-dashboard card that lives inside a .dpanel.
+   Rows mimic the real training dashboard: worker, status pill, CPM. */
+.dashboard-mini {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  font-family: var(--mono);
+}
+.dash-header {
+  display: grid;
+  grid-template-columns: 62px auto 1fr;
+  gap: 8px;
+  padding: 4px 2px;
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+.dash-header span:last-child { text-align: right; }
+.dash-row {
+  display: grid;
+  grid-template-columns: 62px auto 1fr;
+  gap: 8px;
+  padding: 5px 2px;
+  font-size: 0.75rem;
+  border-bottom: 1px dashed var(--border);
+  align-items: center;
+}
+.dash-row:last-child { border-bottom: none; }
+.dr-name { color: var(--text); font-weight: 700; }
+.dr-pill {
+  font-size: 0.5625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 2px;
+  line-height: 1.4;
+  justify-self: start;
+}
+.dr-pill.online {
+  color: var(--green);
+  background: var(--green-soft);
+}
+.dr-pill.stale {
+  color: var(--text-dim);
+  background: var(--grey-soft);
+}
+.dr-cpm { text-align: right; color: var(--text); }
+.dr-cpm.hot { color: var(--red); font-weight: 700; }
+.dr-cpm.zero { color: var(--text-dim); }
+
+/* Anomaly flag — inline red-mono badge on inflated-CPM rows ("flush"). */
+.anomaly-flag {
+  display: inline-block;
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--red);
+  background: var(--red-wash);
+  padding: 0 4px;
+  border-radius: 2px;
+  font-weight: 700;
+}
+
+/* Labeled diptych arrow — widens the existing circular .diptych-arrow into
+   a pill to hold `reality →` in small-caps amber mono. */
+.diptych-arrow.labeled {
+  width: auto;
+  height: auto;
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Deck amber-emphasis span (lesson summary calls out "false confidence"). */
+.deck .em-amber {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ── v1 Annotated-Screenshot Hero additions (slay-the-spire article) ──
+   Scoped additive rules — NOT touching any prior section. Introduced
+   2026-04-19 for the slay-the-spire article implementation (pipeline
+   stage 4). Primitives: .screenshot-hero + .sh-* annotation family,
+   .status-chips + .status-chip + .sc-dot (game-mechanics-block), and
+   .attribution footer.
+   ─────────────────────────────────────────────────────────────────── */
+
+/* Screenshot hero — combat1.png with overlaid amber tickmark annotations */
+.screenshot-hero {
+  position: relative;
+  margin: 0 0 36px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.screenshot-hero .sh-img {
+  position: relative;
+  display: block;
+  line-height: 0;
+}
+.screenshot-hero .sh-img img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+}
+.screenshot-hero figcaption.orienting {
+  margin: 12px 16px 14px;
+  padding: 0;
+}
+
+/* Annotation — amber dot + mono label, absolute-positioned over the image */
+.sh-annotation {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(20, 17, 13, 0.78);
+  padding: 3px 8px;
+  border: 1px solid var(--accent-soft);
+  border-radius: 999px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.sh-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(240, 166, 72, 0.25);
+}
+.sh-label { font-weight: 700; }
+
+/* Annotation positions — six tickmarks scattered around the combat frame */
+.sh-a1 { top: 6%;  left: 4%;  }  /* Player HP     (top-left) */
+.sh-a2 { top: 18%; left: 4%;  }  /* Energy        (top-left below HP) */
+.sh-a3 { top: 34%; left: 46%; }  /* Enemies       (mid-frame) */
+.sh-a4 { top: 22%; left: 56%; }  /* Intent icon   (above enemy) */
+.sh-a5 { bottom: 24%; left: 20%; } /* Hand        (bottom-center) */
+.sh-a6 { bottom: 6%;  right: 4%; } /* End Turn    (bottom-right) */
+
+/* Status chip row — small semantic dots + inline label copy */
+.status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 18px;
+}
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text);
+  max-width: 100%;
+}
+.sc-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+.sc-dot.sc-red    { background: var(--red); }
+.sc-dot.sc-yellow { background: var(--yellow); }
+.sc-dot.sc-green  { background: var(--green); }
+.sc-lbl strong { color: var(--text); font-weight: 700; }
+
+/* Article attribution footer (Mega Crit note) */
+.attribution {
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  margin-top: 48px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* Responsive: below 760, screenshot annotations collapse into a labeled
+   list below the image; status chips go one-per-row. */
+@media (max-width: 759px) {
+  .sh-annotation { font-size: 0.5625rem; padding: 2px 6px; }
+  .status-chips { flex-direction: column; gap: 6px; }
+}
+
+/* ── v3 Fundamentals Card + PPO Cycle additions (reinforcement-learning) ──
+   Scoped additive rules. Introduced 2026-04-19 for the reinforcement-
+   learning deep-dive (pipeline stage 4). Primitives: .fundamentals-card
+   + .fc-cell + .term + .def, and the .ppo-cycle inline-SVG primitive.
+   ─────────────────────────────────────────────────────────────────── */
+
+.fundamentals-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 32px;
+  padding: 24px 26px;
+  margin: 8px 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.fundamentals-card .fc-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fundamentals-card .term {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  line-height: 1.2;
+}
+.fundamentals-card .def {
+  font-size: 0.9375rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+.fundamentals-card .def code {
+  font-size: 0.8125rem;
+}
+
+/* PPO update-cycle SVG — monochrome with amber-accented final step */
+.ppo-cycle {
+  display: block;
+  width: 100%;
+  max-width: 680px;
+  margin: 10px auto 12px;
+  height: auto;
+}
+.ppo-cycle .pc-step {
+  fill: var(--surface);
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.ppo-cycle .pc-step.pc-final {
+  fill: var(--accent-soft);
+  stroke: var(--accent-deep);
+}
+.ppo-cycle text {
+  font-family: var(--sans);
+  fill: var(--text);
+}
+.ppo-cycle .pc-n {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  fill: var(--accent);
+  letter-spacing: 0.08em;
+}
+.ppo-cycle .pc-lbl {
+  font-size: 10px;
+  fill: var(--text);
+}
+.ppo-cycle .pc-arrow {
+  stroke: var(--text-dim);
+  stroke-width: 1;
+  fill: none;
+}
+.ppo-cycle .pc-return {
+  stroke: var(--accent-deep);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  fill: none;
+  opacity: 0.7;
+}
+.ppo-cycle .pc-return-lbl {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--accent);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+@media (max-width: 759px) {
+  .fundamentals-card { grid-template-columns: 1fr; gap: 12px; padding: 18px 18px; }
+}
+
+/* ── v1 Neural-Network Flow Diagram additions ──
+   Scoped additive rules. Introduced 2026-04-19 for the neural-network
+   deep-dive (pipeline stage 4). The SVG primitive .nn-flow is the hero;
+   shape fills/strokes are encoded via class on each SVG element so the
+   page theme flows through natively.
+   ─────────────────────────────────────────────────────────────────── */
+
+.nn-flow {
+  display: block;
+  margin: 6px auto 10px;
+  max-width: 700px;
+  width: 100%;
+  height: auto;
+}
+.nn-flow .nn-flow-svg text {
+  font-family: var(--sans);
+  fill: var(--text);
+}
+.nn-flow .nn-label { font-size: 11px; }
+.nn-flow .nn-label-dim { font-size: 9px; fill: var(--text-dim); }
+.nn-flow .nn-dim {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--accent);
+}
+.nn-flow .nn-section-label {
+  font-size: 10px;
+  fill: var(--accent);
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.nn-flow .nn-emb {
+  fill: rgba(240, 166, 72, 0.10);
+  stroke: var(--accent);
+  stroke-width: 1.2;
+}
+.nn-flow .nn-scalar {
+  fill: transparent;
+  stroke: var(--text-dim);
+  stroke-width: 1;
+}
+.nn-flow .nn-layer {
+  fill: var(--surface-2);
+  stroke: var(--text-dim);
+  stroke-width: 1;
+}
+.nn-flow .nn-policy {
+  fill: rgba(163, 193, 116, 0.10);
+  stroke: var(--green);
+  stroke-width: 1.2;
+}
+.nn-flow .nn-value {
+  fill: rgba(199, 127, 47, 0.12);
+  stroke: var(--accent-deep);
+  stroke-width: 1.2;
+}
+.nn-flow .nn-discard {
+  fill: transparent;
+  stroke: var(--text-dim);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  opacity: 0.7;
+}
+.nn-flow .nn-arrow {
+  stroke: var(--text-dim);
+  stroke-width: 1;
+  fill: none;
+  opacity: 0.75;
+}
+.nn-flow .nn-arrow-head {
+  fill: var(--text-dim);
+  opacity: 0.85;
+}
+.nn-flow .nn-arrow-dashed {
+  stroke: var(--text-dim);
+  stroke-width: 1;
+  fill: none;
+  stroke-dasharray: 4 3;
+  opacity: 0.55;
+}
+.nn-flow .nn-discard-lbl { fill: var(--text-dim); }
+.nn-flow .nn-legend-rule {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+/* ── v1 Split-Ledger additions (input-vector-dd deep-dive) ──
+   Scoped additive rules. Introduced 2026-04-19 for the input-vector-dd
+   article (pipeline stage 4). Primitives: .split-card + .split-side family,
+   table.shape-ledger variant, and the .callout.structural modifier.
+   ─────────────────────────────────────────────────────────────────── */
+
+.split-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin: 20px 0;
+  overflow: hidden;
+}
+.split-card-header {
+  grid-column: 1 / -1;
+  padding: 10px 16px;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  font-family: var(--mono);
+}
+.split-side {
+  padding: 18px;
+  min-width: 0;
+}
+.split-side.left {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+.split-side.right {
+  background: var(--surface-2);
+}
+.split-side .label {
+  font-size: 0.6875rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 10px;
+  font-family: var(--mono);
+}
+.split-side pre {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  border-radius: 3px;
+  overflow-x: auto;
+  line-height: 1.5;
+  margin: 0;
+}
+.split-side ul {
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  line-height: 1.75;
+  margin: 0;
+  padding: 0;
+}
+.split-side ul li {
+  margin-bottom: 2px;
+}
+.split-side ul li span.shape { color: var(--accent); }
+.split-side ul li span.note { color: var(--text-dim); }
+
+/* Shape-ledger — 4-column table variant built on top of table.breakdown */
+table.shape-ledger {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0 28px;
+  font-size: 0.9375rem;
+}
+table.shape-ledger th {
+  text-align: left;
+  font-weight: 700;
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+}
+table.shape-ledger th.num { text-align: right; }
+table.shape-ledger td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: baseline;
+}
+table.shape-ledger td.shape {
+  font-family: var(--mono);
+  color: var(--accent);
+}
+table.shape-ledger td.dtype {
+  font-family: var(--mono);
+  color: var(--text-dim);
+  text-align: right;
+}
+table.shape-ledger td.contrib {
+  text-align: right;
+  color: var(--text);
+  font-family: var(--mono);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Structural callout — neutral amber-deep stripe, used for "where this
+   lands in the net" style reference callouts. No severity pill. */
+.callout.structural {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-deep);
+  background: var(--surface);
+  padding: 16px 18px;
+  margin: 24px 0;
+  border-radius: 3px;
+}
+.callout.structural .c-kicker {
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  color: var(--accent-deep);
+  text-transform: uppercase;
+  font-family: var(--mono);
+  font-weight: 700;
+}
+.callout.structural .c-head {
+  font-size: 1rem;
+  margin: 4px 0 8px;
+  font-weight: 600;
+  color: var(--text);
+}
+.callout.structural pre {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  border-radius: 3px;
+  overflow-x: auto;
+  margin: 6px 0 0;
+  color: var(--text);
+}
+.callout.structural p {
+  margin-top: 8px;
+  margin-bottom: 0;
+  color: var(--text-dim);
+  font-size: 0.9375rem;
+}
+
+/* Responsive: split-card collapses to stacked single-column on narrow */
+@media (max-width: 759px) {
+  .split-card { grid-template-columns: 1fr; }
+  .split-side.left { border-right: 0; border-bottom: 1px solid var(--border); }
+}
+
+/* ── v1 Fleet-First additions (distributed-compute deep-dive) ──
+   Scoped additive rules. Introduced 2026-04-19 for the distributed-compute
+   article (pipeline stage 4). Primitives: fleet-tile state modifiers
+   (.hot / .warm / .cold / .offline) + .ft-cpm inner span, .cfg-table trio,
+   and the .cpm-bars horizontal-bar chart primitive.
+   ─────────────────────────────────────────────────────────────────── */
+
+/* Fleet-tile state modifiers — layered on top of the existing .fleet-tile */
+.fleet-tile.hot {
+  background: var(--green-soft);
+  border-color: var(--green);
+}
+.fleet-tile.warm {
+  background: var(--surface);
+  border-color: var(--border);
+}
+.fleet-tile.cold {
+  background: var(--surface);
+  border-color: var(--border);
+  opacity: 0.72;
+}
+.fleet-tile.offline {
+  background: transparent;
+  border: 1px dashed var(--border);
+  opacity: 0.5;
+}
+.ft-cpm {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+.fleet-tile.cold .ft-cpm,
+.fleet-tile.offline .ft-cpm {
+  color: var(--text-dim);
+}
+.fleet-tile.hot .ft-cpm { color: var(--green); font-weight: 700; }
+
+/* Config-table trio — three side-by-side bordered cards */
+.cfg-table {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 18px 0 28px;
+}
+.cfg-card {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 4px;
+  min-width: 0;
+}
+.cfg-header {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+.cfg-card pre {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  padding: 10px 12px;
+}
+
+/* CPM-bars — 3-column grid (label / bar / value), one row per worker */
+.cpm-bars {
+  display: grid;
+  grid-template-columns: 80px 1fr 110px;
+  gap: 6px 10px;
+  align-items: center;
+  margin: 22px 0 8px;
+  font-family: var(--mono);
+}
+.cpm-row {
+  display: contents;
+}
+.cpm-label {
+  font-size: 0.8125rem;
+  color: var(--text);
+  text-align: right;
+  padding-right: 4px;
+}
+.cpm-bar {
+  display: block;
+  height: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.cpm-fill {
+  display: block;
+  height: 100%;
+  background: var(--text-dim);
+}
+.cpm-fill.hot  { background: var(--green); }
+.cpm-fill.warm { background: var(--accent-deep); }
+.cpm-fill.cold { background: var(--border); }
+.cpm-value {
+  font-size: 0.8125rem;
+  color: var(--text);
+  text-align: left;
+}
+.cpm-caption {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin: 2px 0 22px;
+}
+
+/* Responsive: the cfg-table trio stacks below 760; cpm-bars tightens up */
+@media (max-width: 759px) {
+  .cfg-table { grid-template-columns: 1fr; gap: 10px; }
+  .cpm-bars { grid-template-columns: 64px 1fr 96px; }
 }

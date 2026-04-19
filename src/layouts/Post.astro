@@ -1,21 +1,64 @@
 ---
 import Base from './Base.astro';
 
+interface Heading {
+  text: string;
+  id?: string;
+}
+
 interface Props {
   title: string;
   date: string;
   activeTab: string;
+  category?: string;
+  readingTime?: string;
+  headings?: Heading[];
 }
-const { title, date, activeTab } = Astro.props;
+
+const { title, date, activeTab, category, readingTime, headings } = Astro.props;
 const base = import.meta.env.BASE_URL;
 const backHref = activeTab === 'learned' ? `${base}learned/` : `${base}deep-dive/`;
 const backLabel = activeTab === 'learned' ? 'What I Learned' : 'Deep Dives';
+const defaultCategory = activeTab === 'learned' ? 'What I Learned' : 'Deep Dive';
+const resolvedCategory = category ?? defaultCategory;
+
+// Right-rail TOC. To populate, pass a `headings` prop from the post page:
+//   <Post headings={[{ text: 'Why two layers', id: 'why-two-layers' }, ...]}>
+// If no headings are provided, a generic fallback is rendered so the rail
+// never looks empty. The fallback is a visual placeholder only — swap it for
+// real section titles once posts have final content.
+const fallbackHeadings: Heading[] = [
+  { text: 'Overview' },
+  { text: 'Details' },
+  { text: 'Takeaways' },
+];
+const tocEntries: Heading[] = (headings && headings.length > 0) ? headings : fallbackHeadings;
 ---
 <Base title={title} activeTab={activeTab}>
-  <a class="back-link" href={backHref}>&larr; {backLabel}</a>
-  <article>
-    <h1>{title}</h1>
-    <p class="post-date">{date}</p>
-    <slot />
-  </article>
+  <div class="layout">
+    <article>
+      <a class="back" href={backHref}>&larr; {backLabel}</a>
+      <h1>{title}</h1>
+      <div class="meta-row">
+        <span class="kicker">{resolvedCategory}</span>
+        <span class="meta-sep">·</span>
+        <span>{date}</span>
+        {readingTime && (
+          <>
+            <span class="meta-sep">·</span>
+            <span>{readingTime}</span>
+          </>
+        )}
+      </div>
+      <slot />
+    </article>
+    <aside class="toc">
+      <h4>On this page</h4>
+      {tocEntries.map((h, i) => (
+        <a href={h.id ? `#${h.id}` : '#'} class={i === 0 ? 'active' : ''}>{h.text}</a>
+      ))}
+    </aside>
+  </div>
 </Base>
+
+<!-- _v5 Workshop Warm post treatment — 680 reading frame + 220px right-rail sticky TOC. 2026-04-18_ -->

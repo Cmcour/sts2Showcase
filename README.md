@@ -1,43 +1,39 @@
-# Astro Starter Kit: Minimal
+# sts2Showcase
+
+Portfolio site for **sts2Player**, a distributed PPO agent that learns Slay the Spire 2 combat from scratch.
+
+Live: https://cmcour.github.io/sts2Showcase/
+
+## What's here
+
+I built this as a portfolio piece to document the sts2Player project. The site has three tabs:
+
+- **About** — one-pager on what the agent is, how the training pipeline is wired together, and the 13-stage curriculum.
+- **What I Learned** — lessons-learned blog. Five posts covering reward shaping, curriculum design, distributed deployment on Windows, input-vector design, and a monitoring dashboard that quietly lied to me for 47 minutes.
+- **Deep Dives** — five technical write-ups: Slay the Spire 2 as an RL environment, the reinforcement-learning pipeline (policy + reward + PPO), the neural network (embeddings + trunk + heads), the input vector (what the policy actually sees), and the distributed compute fleet (actor-learner across a LAN worker fleet).
+
+The blog posts reference real code — file paths, function names, constants — pulled from the training repo rather than reconstructed from memory.
+
+## Tech
+
+- Astro 6 static site generator
+- Plain CSS, dark theme, system font stack — no framework
+- Deployed to GitHub Pages via `.github/workflows/deploy.yml` on push to `main`
+- Requires Node ≥ 22.12
+
+## About the training project
+
+The reinforcement-learning implementation — the PyTorch policy network, the PPO learner, the C# Harmony mod, the distributed actor proxy — lives in a separate, private repo called `sts2Player`. This site is the portfolio narrative for that work. I reference code paths, function names, and constants from `sts2Player` throughout the posts; the source itself isn't public here.
+
+## Local development
 
 ```sh
-npm create astro@latest -- --template minimal
+npm install
+npm run dev
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+Dev server runs at `localhost:4321`. `npm run build` writes the static site to `dist/`.
 
-## 🚀 Project Structure
+## Slay the Spire 2 / Mega Crit
 
-Inside of your Astro project, you'll see the following folders and files:
-
-```text
-/
-├── public/
-├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
-```
-
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
-
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
-
-Any static assets, like images, can be placed in the `public/` directory.
-
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+Slay the Spire 2 is a trademark of Mega Crit Games. This project is not affiliated with or endorsed by Mega Crit.
