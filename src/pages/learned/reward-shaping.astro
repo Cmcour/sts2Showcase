@@ -95,9 +95,10 @@ const headings = [
           The agent learned nothing useful after thousands of episodes. 98% of
           early episodes returned <code>-1.0</code>; the policy converged to
           essentially random card play. The gradient signal had to flow back
-          through 20&ndash;30 timesteps via a value function that did not yet
-          know anything, and there was no positive signal to anchor the
-          learning to.
+          through 20&ndash;30 timesteps via a value function &mdash; the
+          part of the network that learns to estimate how good the current
+          situation is &mdash; that did not yet know anything, and there was
+          no positive signal to anchor the learning to.
         </p>
       </div>
     </div>
@@ -105,18 +106,16 @@ const headings = [
   </section>
 
   <p>
-    The problem was textbook credit assignment &mdash; the problem of
-    figuring out which of the 20&ndash;30 actions in an episode caused the
-    final outcome. A typical combat runs
-    20&ndash;30 actions before the terminal reward lands, and at the start of
-    training the agent wins maybe 1&ndash;2% of the time. 98% of gradient
-    updates were pushing against <code>-1.0</code> everywhere, with a value
-    function that had no idea which actions were actually causal and which were
-    incidental. The policy collapsed into randomness because that was the only
-    signal the value head could fit to. Dense reward was the obvious next
-    move &mdash; give the agent something to fit to on every step, not just at
-    the end of the fight, so the value function has a chance to develop a sense
-    of which states are better than which other states.
+    This is textbook credit assignment &mdash; figuring out which of those
+    20&ndash;30 actions caused the final outcome. At the start of training
+    the agent wins maybe 1&ndash;2% of the time, so 98% of gradient updates
+    push against <code>-1.0</code> everywhere, with a value function that
+    has no idea which actions were actually causal and which were
+    incidental. The policy collapsed into randomness because that was the
+    only signal the value head could fit to. Dense reward was the obvious
+    next move &mdash; give the agent something to fit to on every step, not
+    just at the end of the fight, so the value function has a chance to
+    develop a sense of which states are better than which other states.
   </p>
 
   <div class="version-kicker">Version 2</div>

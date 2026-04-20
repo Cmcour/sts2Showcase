@@ -1,0 +1,274 @@
+---
+import Post from '../../layouts/Post.astro';
+
+const headings = [
+  { text: 'ADD \u00b7 The fourth head goes in',   id: 'add' },
+  { text: 'SHIP \u00b7 The obvious log-prob add', id: 'ship' },
+  { text: 'DRIFT \u00b7 Value-loss drift',        id: 'drift' },
+  { text: 'FIX \u00b7 One line and a comment',    id: 'fix' },
+  { text: 'What past-me needed to hear',          id: 'past-me' },
+  { text: 'Takeaways',                            id: 'takeaways' },
+];
+---
+<Post
+  title={"A Second Head That Silently Corrupted PPO\u2019s Ratio Math"}
+  date="2026-04-19"
+  activeTab="learned"
+  readingTime="7 min read"
+  headings={headings}
+>
+  <section class="article-hero">
+    <div class="hero-left">
+      <p class="deck">
+        I added a card-choice head, wired its log-probs into the step
+        log-probs, and made the PPO clip ratio a lie for weeks before I
+        noticed.
+      </p>
+    </div>
+    <div class="hero-right">
+      <div class="pre-label">The Outcome</div>
+      <div class="tile tile-prominent">
+        <div class="tile-num">weeks</div>
+        <div class="tile-lbl">Silent corruption window</div>
+        <div class="tile-delta">value-loss drift &middot; no loud failure</div>
+      </div>
+      <div class="tile-mini-grid">
+        <div class="tile-mini">
+          <span class="num">4</span>
+          <span class="lbl">Heads on the net</span>
+        </div>
+        <div class="tile-mini">
+          <span class="num">1 line</span>
+          <span class="lbl">Size of the fix</span>
+        </div>
+        <div class="tile-mini">
+          <span class="num">choice</span>
+          <span class="lbl">No grad path</span>
+        </div>
+        <div class="tile-mini">
+          <span class="num">ratio</span>
+          <span class="lbl">What broke</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <p>
+    There are four heads on this network. I&rsquo;ve written about three of
+    them before &mdash; a policy head over game actions, a value head, a
+    small discard-priority helper. This post is about the fourth. It&rsquo;s
+    one <code>nn.Linear</code>&rsquo;s worth of code. And between the week I
+    added it and the week I fixed it, the training loop was quietly doing the
+    wrong math every time a card-reward prompt fired.
+  </p>
+  <p>
+    The plain-English version of the bug: training has a self-check that
+    compares &ldquo;how likely the current policy is to do this action&rdquo;
+    against &ldquo;how likely it was at the moment the action was taken.&rdquo;
+    I fed a number into the second half of that comparison that the first
+    half could never reproduce &mdash; so the self-check was quietly always
+    a little bit off. Nothing blew up. A loss curve drifted in a direction I
+    didn&rsquo;t understand. That&rsquo;s the whole story; the rest is how I
+    got there and how I finally saw it.
+  </p>
+
+  <div class="version-kicker">ADD</div>
+  <section id="add" class="iter-card">
+    <h2>The fourth head goes in</h2>
+    <div class="iter-grid">
+      <div class="panel what-i-did">
+        <div class="panel-label">What I did</div>
+        <ul>
+          <li>Added <code>choice_proj = nn.Linear(HIDDEN_DIM, CARD_EMB_DIM)</code> as a fourth head.</li>
+          <li>Wrote <code>choose_cards(enc, option_card_ids, n_select)</code> &mdash; project trunk hidden state, dot against card embeddings of the offered cards, sample without replacement.</li>
+          <li>Wired it into <code>actor_proxy._handle_choice</code>, which the environment calls on card-reward prompts.</li>
+        </ul>
+        <p>
+          The curriculum was approaching the point where the agent would start
+          making deck-building decisions, and a card-reward picker seemed
+          like the smallest possible step in that direction. One linear
+          layer, trained end-to-end with the rest of the network &mdash; or
+          so I told myself.
+        </p>
+      </div>
+      <div class="panel what-broke">
+        <div class="panel-label">What went wrong</div>
+        <p>
+          Nothing visible. The head ran. The agent picked cards. Reward curves
+          kept going up. The corruption had already started but the symptoms
+          were days away.
+        </p>
+      </div>
+    </div>
+    <div class="result-chip"><span class="num">silent</span><span class="lbl">&middot; not yet visible</span></div>
+  </section>
+
+  <div class="version-kicker">SHIP</div>
+  <section id="ship" class="iter-card">
+    <h2>The log-prob combination that looked obvious</h2>
+    <div class="iter-grid">
+      <div class="panel what-i-did">
+        <div class="panel-label">What I did</div>
+        <p>
+          <code>choose_cards</code> returns a log-prob &mdash; a numeric
+          record of &ldquo;how likely the policy said this pick was.&rdquo;
+          PPO uses log-probs on every transition as <code>old_lp</code>, its
+          stored snapshot of that likelihood at the moment the action fired.
+          The obvious thing, which I did without thinking about it too hard,
+          was to add the choice log-prob to the step log-prob:
+        </p>
+<pre><code>{`# what I shipped
+step_log_prob = main_log_prob + choice_log_prob`}</code></pre>
+        <p>
+          I remember writing it. I remember not writing a test. That&rsquo;s
+          the receipt.
+        </p>
+      </div>
+      <div class="panel what-broke">
+        <div class="panel-label">What went wrong</div>
+        <p>
+          Short version: PPO&rsquo;s core trick is a ratio &mdash; the
+          importance weight &mdash; that compares the policy&rsquo;s current
+          opinion of an action against what it thought at rollout time. If
+          the learner can&rsquo;t reconstruct both sides of that ratio, the
+          whole update is scaled by a number that&rsquo;s subtly wrong.
+        </p>
+        <p>
+          <code>choice_proj</code> has no gradient path from the PPO loss.
+          PPO&rsquo;s update scales by that importance ratio between the
+          current policy and the policy under which the rollout was collected
+          &mdash; both sides of that subtraction have to be recoverable at
+          training time.
+        </p>
+        <p>
+          The policy head&rsquo;s log-prob survives the round trip. <code>choose_cards</code> does not. Its
+          log-prob is the sum of per-pick log-probs over a
+          <code>remaining_mask</code> that evolves with the selection order,
+          and the learner has no way to reproduce that from the stored state.
+          Including it in <code>old_lp</code> makes the ratio on every choice
+          step off by <code>exp(choice_log_prob)</code>.
+        </p>
+      </div>
+    </div>
+    <div class="result-chip"><span class="num">ratio is a lie</span><span class="lbl">&middot; on every choice step</span></div>
+  </section>
+
+  <div class="version-kicker">DRIFT</div>
+  <section id="drift" class="iter-card">
+    <h2>Value-loss drift around choice events</h2>
+    <div class="iter-grid">
+      <div class="panel what-i-did">
+        <div class="panel-label">What I did</div>
+        <p>
+          Assumed training was fine because nothing was on fire. Reward curves
+          tracked. Stage-0 win rate climbed. Entropy looked okay. What I was
+          mostly monitoring was whether the runs blew up, and they
+          weren&rsquo;t.
+        </p>
+      </div>
+      <div class="panel what-broke">
+        <div class="panel-label">What went wrong</div>
+        <p>
+          Plain version: the net has a companion estimate of &ldquo;how good
+          is the current state&rdquo; &mdash; the value function &mdash; and
+          the training loss for that estimate is supposed to settle as it
+          learns. Mine wasn&rsquo;t settling. It was slowly walking in a
+          direction I couldn&rsquo;t attribute to anything.
+        </p>
+        <p>
+          Value loss had a persistent drift I couldn&rsquo;t explain. Not a
+          spike, not a divergence &mdash; a drift. Every time I pinned the
+          window to a specific rollout segment and looked at the transitions,
+          the segment contained at least one combat-end choice prompt. Once I
+          saw that pattern three times it stopped being a coincidence.
+        </p>
+        <p>
+          The failure mode was not the one I was watching for. I had been
+          waiting for training to blow up &mdash; a NaN, a loss spike, a
+          collapse. What I got was worse: training looked fine, but the
+          policy gradient was being pushed by numbers that didn&rsquo;t mean
+          what PPO expected them to mean.
+        </p>
+      </div>
+    </div>
+    <div class="result-chip"><span class="num">drift</span><span class="lbl">&middot; not a spike</span></div>
+  </section>
+
+  <div class="version-kicker">FIX</div>
+  <section id="fix" class="iter-card">
+    <h2>One line and a comment</h2>
+    <div class="iter-grid">
+      <div class="panel what-i-did">
+        <div class="panel-label">What I did</div>
+        <p>
+          Dropped the choice log-prob from the step log-prob. Left a comment
+          above the line so the next version of me doesn&rsquo;t re-add it.
+        </p>
+<pre><code>{`# Don't include choice log_probs — PPO can't re-evaluate them
+# during training (choice_proj has no gradient path in the PPO loss).
+# Including them corrupts the importance sampling ratio.
+step_log_prob = log_prob.item()`}</code></pre>
+      </div>
+      <div class="panel what-worked">
+        <div class="panel-label">What works now</div>
+        <p>
+          PPO&rsquo;s ratio math holds end-to-end. The clip term &mdash; the
+          safety rail that caps how far a single update moves the policy
+          &mdash; means what it&rsquo;s supposed to mean on every step,
+          including steps where a choice fired. <code>choice_proj</code>
+          still picks cards; its log-probs are just honest about not being
+          re-evaluable.
+        </p>
+        <p>
+          Training it is a separate problem. The current plan is a
+          frozen-combat, V-as-reward setup on the choice head alone, which
+          sidesteps the re-evaluation question entirely by not putting the
+          choice log-prob through PPO in the first place.
+        </p>
+      </div>
+    </div>
+    <div class="result-chip"><span class="num">ratio honest</span><span class="lbl">&middot; end-to-end</span></div>
+  </section>
+
+  <h2 id="past-me">What past-me needed to hear</h2>
+  <p>
+    Before you add a second head, enumerate every tensor it produces and ask:
+    does PPO&rsquo;s ratio math still hold for this, end-to-end? The answer
+    has to be yes on every step, not mostly, and &ldquo;we&rsquo;ll figure out
+    training later&rdquo; is the same shape as &ldquo;this log-prob is wrong
+    but I&rsquo;ll ignore it.&rdquo; If the learner can&rsquo;t re-evaluate a
+    log-prob from the stored state, that log-prob can&rsquo;t be in
+    <code>old_lp</code>. Drop it, or add a gradient path first.
+  </p>
+  <p>
+    The other lesson is about what <em>looks</em> like a training failure.
+    Silent corruption doesn&rsquo;t spike a loss curve. It biases a gradient
+    in a specific direction on a specific subset of transitions. Reward curves
+    kept going up because the policy was still improving on the combat
+    actions that weren&rsquo;t corrupted; the choice-step corruption was
+    dragging against that improvement but not enough to reverse it. What it
+    cost, quantitatively, I can&rsquo;t say &mdash; by the time I noticed, I
+    was re-running training from the fix forward, not A/B-testing against the
+    broken version.
+  </p>
+
+  <h2 id="takeaways">Takeaways</h2>
+  <ol>
+    <li>
+      Any log-prob that can&rsquo;t be re-evaluated at training time is not a
+      log-prob PPO can use. Drop it or give it a gradient path.
+    </li>
+    <li>
+      &ldquo;Training looks fine&rdquo; is not an all-clear &mdash; silent
+      corruption leaves the loud signals alone and biases the quiet ones.
+    </li>
+    <li>
+      Before adding a second head, trace every tensor it produces through the
+      update math. The ratio has to hold end-to-end.
+    </li>
+    <li>
+      Comments above the fix, not just the fix. Future-me reads the comment
+      before the code.
+    </li>
+  </ol>
+</Post>

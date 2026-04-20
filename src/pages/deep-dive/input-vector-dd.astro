@@ -17,6 +17,7 @@ const headings = [
   title="Input Vector — What the Network Actually Sees"
   date="2026-04-19"
   activeTab="deep-dive"
+  readingTime="9 min read"
   headings={headings}
 >
   <p class="deck">
@@ -268,8 +269,8 @@ const headings = [
     <code>self.power_emb</code> lookup, appends the normalized amount as
     a trailing dim, mean-pools across the 15 slots with
     <code>mask.sum(-1).clamp(min=1)</code> as the divisor, and reshapes
-    back to <code>[B, 6, 9]</code>. Ten percent of the naive cost, same
-    "what's active on this enemy" signal.
+    back to <code>[B, 6, 9]</code>. About a fifteenth of the naive cost
+    (9 / 135), same "what's active on this enemy" signal.
   </p>
   <p>
     <code>enemy_intent_dmg</code> clips at 50 —
@@ -447,8 +448,11 @@ state["exhaust_pile"] = []`}</pre>
       <code>Linear(583, 256) → LayerNorm → ReLU → Linear(256, 256) → LayerNorm → ReLU</code>,
       then the heads: <code>policy_head: Linear(256, 61)</code> for action
       logits, <code>value_head: Linear(256, 1)</code> for V(s),
-      <code>discard_head: Linear(256, 10)</code> for end-of-turn discard
-      priority. Illegal actions get masked to <code>-1e9</code> before the
+      <code>discard_head: Linear(256, 10)</code> for mid-turn discard
+      priority, and <code>choice_proj: Linear(256, 16)</code> — the
+      card-choice head, trained outside the PPO loss and covered in
+      the <a href={`${base}deep-dive/card-choice-head/`}>Card-Choice Head</a>
+      deep dive. Illegal actions get masked to <code>-1e9</code> before the
       softmax. 61 actions = 1 <code>end_turn</code> + 10 × 6
       <code>play(card, target)</code>.
     </p>

@@ -4,6 +4,13 @@ const base = import.meta.env.BASE_URL;
 
 const posts = [
   {
+    slug: 'choice-head-silent-corruption',
+    title: 'A Second Head That Silently Corrupted PPO\u2019s Ratio Math',
+    date: '2026-04-19',
+    category: 'What I Learned',
+    excerpt: 'I added a second decision-maker to the network and wired it into the training math the wrong way. Nothing blew up \u2014 a training metric just quietly drifted for weeks before I spotted the pattern. The fix was one line of code and a comment explaining why past-me got it wrong.',
+  },
+  {
     slug: 'reward-shaping',
     title: 'Reward Shaping: Every Iteration Got Gamed',
     date: '2026-04-18',

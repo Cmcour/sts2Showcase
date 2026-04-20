@@ -15,6 +15,7 @@ const headings = [
   title="Input Vector Design — One-Hot Was a Trap"
   date="2026-04-19"
   activeTab="learned"
+  readingTime="8 min read"
   headings={headings}
 >
   <p class="deck">
@@ -55,6 +56,15 @@ const headings = [
     </div>
     <div class="diptych-arrow" aria-hidden="true">→</div>
   </div>
+  <p>
+    A quick glossary before the story: <strong>one-hot</strong> is a single
+    &ldquo;check one box out of N&rdquo; column per card or enemy &mdash; 80
+    columns for 80 cards, exactly one of them lit at a time. An
+    <strong>embedding</strong> is a small learned vector per card instead
+    &mdash; 16 numbers the network tunes itself so that similar cards end up
+    nearby. <strong>Mean-pooling</strong> is just averaging those vectors
+    together when the game hands you an unordered pile of things.
+  </p>
   <p class="orienting">
     Two traps sat inside this design. One I spotted, one I didn't — for three
     iterations.
@@ -101,12 +111,13 @@ const headings = [
     practice is that the network has no structural reason to treat Strike and
     Strike+ as related, no structural reason to treat Defend and Neutralize
     as different kinds of things, no structural reason to group the poison
-    cards together. It has to discover all of that from the gradient signal,
-    one card at a time.
+    cards together. It has to discover all of that from the gradient signal
+    &mdash; the small nudges training delivers each time the network gets a
+    prediction wrong &mdash; one card at a time.
   </p>
   <p>
-    Curriculum made this worse on a schedule. Stage 3 introduces poison cards.
-    Stage 5 introduces draw cards. Until each stage unlocked, the one-hot
+    Curriculum made this worse on a schedule. Stage 3 introduces draw cards.
+    Stage 4 introduces poison cards. Until each stage unlocked, the one-hot
     column for those cards had been zero for thousands of episodes — the
     weights pointing into it were essentially random. On the first episode a
     new card appeared, the network was reading noise. I kept noticing the
@@ -166,7 +177,8 @@ const headings = [
     <strong>Hand (270).</strong> Ten slots, each containing a 16-dimensional
     card embedding plus eleven scalar extras — cost, type, keyword flags, an
     upgraded marker. The embedding table is <code>nn.Embedding(vocab_size, 16)</code>
-    and it's trained end-to-end with the policy. Strike and Strike+ end up in
+    — PyTorch's built-in lookup table, one row of 16 numbers per card in the
+    vocabulary — and it's trained end-to-end with the policy. Strike and Strike+ end up in
     neighboring parts of embedding space without me asking for that; poison
     cards cluster; defense cards form their own region. I didn't design for
     that, and I can't fully predict it from the gradient math, but it falls

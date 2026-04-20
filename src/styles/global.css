@@ -1991,5 +1991,6 @@ table.shape-ledger td.contrib {
 /* Responsive: the cfg-table trio stacks below 760; cpm-bars tightens up */
 @media (max-width: 759px) {
   .cfg-table { grid-template-columns: 1fr; gap: 10px; }
+  /* SS-072 repair — tail of file was truncated pre-push */
   .cpm-bars { grid-template-columns: 64px 1fr 96px; }
 }

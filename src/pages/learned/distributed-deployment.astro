@@ -70,7 +70,8 @@ const headings = [
   <p>
     <strong>PowerShell Remoting (WinRM / PSRemoting).</strong> Microsoft&rsquo;s
     officially recommended answer for running commands on remote Windows
-    machines. One
+    machines &mdash; think of it as the Windows-native equivalent of
+    <code>ssh user@host</code>. One
     <code>Enable-PSRemoting</code> on each worker and you&rsquo;re supposed
     to be done.
   </p>
@@ -84,11 +85,13 @@ const headings = [
       <strong>PIN-only login accounts can&rsquo;t authenticate to WinRM.</strong>
       Most of my laptops use Windows Hello PIN for login, with no password
       set. PSRemoting wants one of three things: a password I don&rsquo;t
-      have, a Kerberos + domain join my home network doesn&rsquo;t offer,
-      or CredSSP with exemptions. Each workaround I looked at required
-      applying the same workaround to all eleven machines. That&rsquo;s
-      eleven points of failure for a setup step. I gave PSRemoting a few
-      more days and then cut it.
+      have, a Kerberos + domain join &mdash; the corporate-network identity
+      stack where every machine trusts a central server &mdash; that my home
+      network doesn&rsquo;t offer, or CredSSP &mdash; a credential-forwarding
+      mode with a long list of hardening exemptions &mdash; with exemptions.
+      Each workaround I looked at required applying the same workaround to
+      all eleven machines. That&rsquo;s eleven points of failure for a setup
+      step. I gave PSRemoting a few more days and then cut it.
     </p>
   </div>
 
@@ -117,11 +120,12 @@ const headings = [
       <strong>Spawned processes die when the SSH session closes.</strong>
       <code>ssh worker "start_game.bat"</code> launches the game. The game
       dies the second SSH disconnects. <code>nohup</code> and
-      <code>setsid</code> don&rsquo;t exist on Windows. <code>start /b</code>
-      didn&rsquo;t detach cleanly. <code>powershell Start-Process</code>
-      didn&rsquo;t either. On Windows, processes inherit the login session
-      of their parent, and when the SSH session ends, the session gets
-      cleaned up with its children.
+      <code>setsid</code> &mdash; the standard Unix incantations for
+      &ldquo;keep running after I leave&rdquo; &mdash; don&rsquo;t exist on
+      Windows. <code>start /b</code> didn&rsquo;t detach cleanly.
+      <code>powershell Start-Process</code> didn&rsquo;t either. On Windows,
+      processes inherit the login session of their parent, and when the SSH
+      session ends, the session gets cleaned up with its children.
     </p>
   </div>
 
@@ -138,7 +142,7 @@ const headings = [
     launch a process in a session that will outlive me.
   </p>
 
-  <div class="chain-diagram" role="img" aria-label="Launch chain: restart_workers.bat calls SSH, which calls schtasks (the weird link), which launches cmd.exe, which runs run_worker.bat, which spawns a proxy and 4 to 6 game instances.">
+  <div class="chain-diagram" role="img" aria-label="Launch chain: restart_workers.bat calls SSH, which calls schtasks (the weird link), which launches cmd.exe, which runs run_worker.bat, which spawns a proxy and 2 to 4 game instances.">
     <div class="cd-caption">The launch chain</div>
 <pre>    restart_workers.bat
             &#9474;
@@ -155,7 +159,7 @@ const headings = [
        run_worker.bat
          &#9585;           &#9586;
         &#9660;             &#9660;
-      proxy          games (4&ndash;6)</pre>
+      proxy          games (2&ndash;4)</pre>
   </div>
 
   <p>
@@ -237,14 +241,15 @@ schtasks /delete /tn STS2Worker /f</code></pre>
 
   <h3 id="proxy-games">proxy + games</h3>
   <p>
-    <code>run_worker.bat</code> spawns one actor proxy process and four to
-    six headless game instances. The games run combat encounters against
-    the current policy; the proxy aggregates their transitions and streams
-    them up to the learner. Weight sync happens the other direction, every
-    16 episodes.
+    <code>run_worker.bat</code> spawns one actor proxy process and two to
+    four headless game instances (three by default per
+    <code>worker_config.toml</code>). The games run combat encounters
+    against the current policy; the proxy aggregates their transitions
+    and streams them up to the learner. Weight sync happens the other
+    direction, every 16 episodes.
   </p>
   <p>
-    The specific per-worker count (four to six) is tuned to per-machine
+    The specific per-worker count (two to four) is tuned to per-machine
     thermals &mdash; some of the laptops throttle aggressively when all
     cores run hot, so the fleet is not uniform on that axis either.
   </p>
@@ -258,14 +263,17 @@ schtasks /delete /tn STS2Worker /f</code></pre>
   <div class="callout gotcha">
     <div class="callout-label">stsBot3 &mdash; Windows Defender Application Control blocked the game executable</div>
     <p>
-      Device Guard / WDAC is an enterprise code-integrity feature. The game
-      executable wasn&rsquo;t signed in a way the local policy on this
-      machine was willing to accept, and the machine isn&rsquo;t org-joined
-      &mdash; the WDAC policy was just enabled at some point, on its own. I
-      tried signature troubleshooting first and got nowhere. What actually
-      worked (documented in <code>docs/worker_commands.md</code>) was
-      disabling DEP/CFG process mitigations for the game binary and turning
-      off the hypervisor launch type, then rebooting:
+      Device Guard / WDAC is an enterprise code-integrity feature &mdash;
+      Windows&rsquo; &ldquo;only run binaries I already trust&rdquo; policy.
+      The game executable wasn&rsquo;t signed in a way the local policy on
+      this machine was willing to accept, and the machine isn&rsquo;t
+      org-joined &mdash; the WDAC policy was just enabled at some point, on
+      its own. I tried signature troubleshooting first and got nowhere. What
+      actually worked (documented in <code>docs/worker_commands.md</code>)
+      was disabling DEP/CFG process mitigations &mdash; the memory-protection
+      rules Windows applies to every process by default &mdash; for the game
+      binary, and turning off the hypervisor launch type &mdash; Windows&rsquo;
+      virtualization-based security layer &mdash; then rebooting:
     </p>
 <pre class="code-block"><code>Set-ProcessMitigation -Name "SlayTheSpire2.exe" -Disable DEP,CFG
 bcdedit /set hypervisorlaunchtype off</code></pre>
@@ -294,10 +302,11 @@ bcdedit /set hypervisorlaunchtype off</code></pre>
   <div class="callout gotcha">
     <div class="callout-label">stsBot9 &mdash; couldn&rsquo;t resolve the learner&rsquo;s hostname</div>
     <p>
-      Two workers hit this. Static IP assignment on the learner side was
-      inconsistent with the <code>workers.txt</code> entries each worker
-      was reading. Ordinary DHCP-reservation drift. Unglamorous to fix.
-      Worth noting because it&rsquo;s the second-place finish in
+      Static IP assignment on the learner side was inconsistent with the
+      <code>workers.txt</code> entry this worker was reading. Ordinary
+      DHCP-reservation drift &mdash; the router had silently handed the
+      machine a different address than the one I&rsquo;d pinned. Unglamorous
+      to fix. Worth noting because it&rsquo;s the second-place finish in
       &ldquo;things that were unique to one machine.&rdquo;
     </p>
   </div>
@@ -323,10 +332,9 @@ bcdedit /set hypervisorlaunchtype off</code></pre>
   </p>
   <p>
     <strong>Assume each worker will have one unique failure.</strong>
-    Across eleven, I hit one WDAC block, one corrupted DLL, one broken
-    Python install, and two hostname-resolution issues. Five of eleven,
-    each different. Plan for per-machine triage &mdash; no uniform rollout
-    is going to be uniform.
+    Across eleven, I hit one WDAC block, one corrupted DLL, and one
+    hostname-resolution issue. Three of eleven, each different. Plan for
+    per-machine triage &mdash; no uniform rollout is going to be uniform.
   </p>
   <p>
     <strong>Build a one-key restart before the fleet gets past two or
@@ -375,7 +383,7 @@ bcdedit /set hypervisorlaunchtype off</code></pre>
   <ul>
     <li><strong>Workers:</strong> 11 laptops, mix of Windows 10 and 11, mix of PIN and password auth</li>
     <li><strong>Network:</strong> home LAN with DHCP reservations, ~1ms latency, occasional WiFi flakiness</li>
-    <li><strong>Per-worker load:</strong> 4&ndash;6 headless game instances + 1 actor proxy</li>
+    <li><strong>Per-worker load:</strong> 2&ndash;4 headless game instances + 1 actor proxy (3 by default per <code>worker_config.toml</code>, tuned per machine for thermals)</li>
     <li><strong>Launch chain:</strong> <code>restart_workers.bat</code> &rarr; SSH &rarr; <code>schtasks</code> &rarr; <code>cmd.exe</code> &rarr; <code>run_worker.bat</code> &rarr; proxy + games</li>
     <li><strong>Worker discovery:</strong> static <code>workers.txt</code> (<code>name=ip</code> entries), no dynamic discovery</li>
     <li><strong>Weight sync:</strong> actor proxy pulls fresh weights from the learner every 16 episodes</li>
@@ -390,4 +398,3 @@ bcdedit /set hypervisorlaunchtype off</code></pre>
     shape of the hole I dug through each of them.
   </p>
 </Post>
-                                                

@@ -149,8 +149,7 @@ const headings = [
 
   <p class="pullquote">
     <strong>Stage&nbsp;0 &mdash; starter deck, one enemy &mdash; got the
-    agent above 80% in roughly 500 episodes.</strong> Two weeks of
-    full-game training before that got me nowhere. The curriculum
+    agent above 80% in roughly 500 episodes.</strong> The curriculum
     wasn&rsquo;t a training wheel for this project; it was the only
     shape of task the signal could reach through.
   </p>
@@ -181,55 +180,55 @@ const headings = [
     <div id="stage-01" class="stage-detail">
       <div class="num">01</div>
       <div>
-        <h3>+BUCKET_A (damage &amp; block)</h3>
-        <p class="desc">Adds the six basic damage/block cards (Slice, Deflect, Dagger Spray, Backstab, Dash, Skewer). Deck size widens to 15&ndash;20, upgrade chance turns on at 10%. Enemy pool unchanged.</p>
+        <h3>Adds the six basic damage and block cards</h3>
+        <p class="desc">Bucket: <code>BUCKET_A</code> (Slice, Deflect, Dagger Spray, Backstab, Dash, Skewer). Deck size widens to 15&ndash;20, upgrade chance turns on at 10%. Enemy pool unchanged.</p>
       </div>
     </div>
 
     <div id="stage-02" class="stage-detail">
       <div class="num">02</div>
       <div>
-        <h3>+BUCKET_D (debuff)</h3>
-        <p class="desc">Adds the ten debuff cards (Neutralize, Piercing Wail, Sucker Punch, Expose, Leg Sweep, Strangle, Assassinate, Malaise, Blade of Ink, Suppress). Debuffs and status effects enter play. Enemy pool unchanged.</p>
+        <h3>Adds the ten debuff cards &mdash; the first cards that apply status effects</h3>
+        <p class="desc">Bucket: <code>BUCKET_D</code> (Neutralize, Piercing Wail, Sucker Punch, Expose, Leg Sweep, Strangle, Assassinate, Malaise, Blade of Ink, Suppress). Debuffs and status effects enter play. Enemy pool unchanged.</p>
       </div>
     </div>
 
     <div id="stage-03" class="stage-detail">
       <div class="num">03</div>
       <div>
-        <h3>+BUCKET_E (draw/cycle) &middot; multi-enemy encounters unlock</h3>
-        <p class="desc">Adds the six draw/cycle cards (Backflip, Acrobatics, Expertise, Hidden Daggers, Predator, Adrenaline). Enemy pool expands to <code>_ENEMIES_NM</code> &mdash; normal-single plus normal-multi.</p>
+        <h3>Adds draw-and-cycle cards, and multi-enemy fights unlock</h3>
+        <p class="desc">Bucket: <code>BUCKET_E</code> (Backflip, Acrobatics, Expertise, Hidden Daggers, Predator, Adrenaline). Enemy pool expands to <code>_ENEMIES_NM</code> &mdash; normal-single plus normal-multi.</p>
       </div>
     </div>
 
     <div id="stage-04" class="stage-detail">
       <div class="num">04</div>
       <div>
-        <h3>+BUCKET_B (poison)</h3>
-        <p class="desc">Adds the five poison cards (Deadly Poison, Poisoned Stab, Snakebite, Bouncing Flask, Bubble Bubble). Poison as alternative damage. Enemy pool unchanged.</p>
+        <h3>Adds poison cards &mdash; a second damage type</h3>
+        <p class="desc">Bucket: <code>BUCKET_B</code> (Deadly Poison, Poisoned Stab, Snakebite, Bouncing Flask, Bubble Bubble). Poison as alternative damage. Enemy pool unchanged.</p>
       </div>
     </div>
 
     <div id="stage-05" class="stage-detail">
       <div class="num">05</div>
       <div>
-        <h3>+BUCKET_C (shiv)</h3>
-        <p class="desc">Adds the seven shiv cards (Blade Dance, Cloak and Dagger, Leading Strike, Accuracy, Up My Sleeve, Storm of Steel, Knife Trap). Enemy pool unchanged.</p>
+        <h3>Adds shiv cards &mdash; a third damage mechanic</h3>
+        <p class="desc">Bucket: <code>BUCKET_C</code> (Blade Dance, Cloak and Dagger, Leading Strike, Accuracy, Up My Sleeve, Storm of Steel, Knife Trap). Enemy pool unchanged.</p>
       </div>
     </div>
 
     <div id="stage-06" class="stage-detail">
       <div class="num">06</div>
       <div>
-        <h3>+BUCKET_F (sly/discard) &rarr; full non-power pool</h3>
-        <p class="desc">Adds the last non-power bucket (Survivor, Dagger Throw, Flick Flack, Prepared, Ricochet, Untouchable, Haze, Reflex, Tactician, Calculated Gamble), completing <code>_CARDS_AF</code>. Enemy pool unchanged.</p>
+        <h3>Adds the sly / discard bucket &mdash; non-power pool now complete</h3>
+        <p class="desc">Bucket: <code>BUCKET_F</code> (Survivor, Dagger Throw, Flick Flack, Prepared, Ricochet, Untouchable, Haze, Reflex, Tactician, Calculated Gamble), completing <code>_CARDS_AF</code>. Enemy pool unchanged.</p>
       </div>
     </div>
 
     <div id="stage-07" class="stage-detail">
       <div class="num">07</div>
       <div>
-        <h3>Settle &middot; identical to stage 6</h3>
+        <h3>Settle stage &mdash; no new cards, just consolidation on the non-power pool</h3>
         <p class="desc">No additions. <code>_STAGE_DEFS</code> pairs stage 7 with stage 6 so the plateau detector has more time to confirm the non-power pool is stable before elites show up.</p>
       </div>
     </div>
@@ -237,7 +236,7 @@ const headings = [
     <div id="stage-08" class="stage-detail">
       <div class="num">08</div>
       <div>
-        <h3>+Elites (no card change)</h3>
+        <h3>Elites show up for the first time (no new cards)</h3>
         <p class="desc">Card pool stays at <code>_CARDS_AF</code>; enemy pool swaps to <code>_ENEMIES_EL</code>, adding the six Act&nbsp;1 elites (Phantasmal Gardeners, Skulking Colony, Terror Eel, Bygone Effigy, Byrdonis, Phrog Parasite). First stage where elites appear.</p>
       </div>
     </div>
@@ -245,23 +244,23 @@ const headings = [
     <div id="stage-09" class="stage-detail">
       <div class="num">09</div>
       <div>
-        <h3>+BUCKET_G1 + G2 (powers)</h3>
-        <p class="desc">The complete power addition &mdash; poison/shiv scaling powers and general scaling powers, both at once. Upgrade chance jumps 10% &rarr; 30% and <code>deck_size_max</code> goes from 22 to 25. Enemy pool unchanged.</p>
+        <h3>Power cards unlock &mdash; persistent per-combat effects enter the mix</h3>
+        <p class="desc">Bucket: <code>BUCKET_G1 + G2</code> &mdash; poison/shiv scaling powers and general scaling powers, both at once. Upgrade chance jumps 10% &rarr; 30% and <code>deck_size_max</code> goes from 22 to 25. Enemy pool unchanged.</p>
       </div>
     </div>
 
     <div id="stage-10" class="stage-detail">
       <div class="num">10</div>
       <div>
-        <h3>+BUCKET_H (combo) &rarr; full card pool</h3>
-        <p class="desc">Adds the combo/conditional bucket, completing <code>_CARDS_ALL</code>. Enemy pool unchanged from stage 8.</p>
+        <h3>Combo / conditional cards unlock &mdash; full card pool now live</h3>
+        <p class="desc">Bucket: <code>BUCKET_H</code>, completing <code>_CARDS_ALL</code>. Enemy pool unchanged from stage 8.</p>
       </div>
     </div>
 
     <div id="stage-11" class="stage-detail">
       <div class="num">11</div>
       <div>
-        <h3>Settle &middot; identical to stage 10</h3>
+        <h3>Settle stage &mdash; let performance stabilize on the full pool + elites</h3>
         <p class="desc">No additions. Another settle/confirm stage on the full pool + elites.</p>
       </div>
     </div>
@@ -269,8 +268,8 @@ const headings = [
     <div id="stage-12" class="stage-detail">
       <div class="num">12</div>
       <div>
-        <h3>Final &middot; identical to stages 10&ndash;11</h3>
-        <p class="desc">Labeled &ldquo;final&rdquo; by design; no new cards or enemies. The curriculum tops out here.</p>
+        <h3>Final stage &mdash; the curriculum tops out here</h3>
+        <p class="desc">Labeled &ldquo;final&rdquo; by design; no new cards or enemies. Identical to stages 10&ndash;11.</p>
       </div>
     </div>
 
@@ -310,8 +309,8 @@ const headings = [
       <code>card_pool</code> into a deck sized within
       <code>[deck_size_min, deck_size_max]</code>, with each card upgraded
       independently at <code>upgrade_chance</code>. Per <code>_STAGE_DEFS</code>
-      that chance is 0% at stage 0, 10% at stages 1&ndash;8, and 30% at
-      stages 9&ndash;12 &mdash; not a contiguous band. Rollback &mdash;
+      that chance jumps from 0% (stage 0) to 10% (stages 1&ndash;8) to 30%
+      (stages 9&ndash;12) &mdash; stepped, not a smooth ramp. Rollback &mdash;
       falling back to a prior stage if the agent regresses &mdash; I considered
       and never implemented. It hasn&rsquo;t been needed.
     </p>

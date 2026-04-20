@@ -3,25 +3,29 @@ import Post from '../../layouts/Post.astro';
 const base = import.meta.env.BASE_URL;
 
 const headings = [
-  { text: 'At a glance',               id: 'at-a-glance' },
-  { text: 'The 30-second version',     id: 'thirty-second' },
-  { text: 'A turn in detail',          id: 'a-turn-in-detail' },
-  { text: 'Cards are the verbs',       id: 'cards-are-the-verbs' },
-  { text: 'Intent telegraphing',       id: 'intent-telegraphing' },
-  { text: 'Status effects',            id: 'status-effects' },
-  { text: 'Two views of the same combat', id: 'two-views' },
-  { text: 'Why this is interesting for RL', id: 'why-rl' },
+  { text: 'At a glance',                        id: 'at-a-glance' },
+  { text: 'Why I chose this game as an RL target', id: 'why-rl' },
+  { text: 'The 30-second version',              id: 'thirty-second' },
+  { text: 'A turn — and one RL step per play',  id: 'a-turn-in-detail' },
+  { text: 'Cards are the verbs',                id: 'cards-are-the-verbs' },
+  { text: 'Intent — reading, not predicting',   id: 'intent-telegraphing' },
+  { text: 'Status effects drive the scalar budget', id: 'status-effects' },
+  { text: 'Two views of the same combat',       id: 'two-views' },
 ];
 ---
 <Post
   title="Slay the Spire 2 — What the Agent Is Actually Playing"
   date="2026-04-19"
   activeTab="deep-dive"
+  readingTime="6 min read"
   headings={headings}
 >
   <p class="deck">
-    Before I can show you how the agent plays this game, I have to show you the
-    game. Here's the 5-minute version.
+    I chose Slay the Spire 2 as the RL target because three structural
+    properties make it a harder problem than it looks — combinatorial
+    per-turn action space, partial observation, long-horizon credit
+    assignment. This post walks the mechanics, but only far enough to
+    explain the modeling decisions each one forced.
   </p>
 
   {/* Annotated screenshot hero — combat1.png with six amber tickmarks */}
@@ -40,27 +44,71 @@ const headings = [
     </figcaption>
   </figure>
 
-  <h2 id="thirty-second">The 30-second version</h2>
+  <h2 id="why-rl">Why I chose this game as an RL target</h2>
   <p>
-    Slay the Spire 2 is a deck-building roguelike. The player climbs a spire,
-    one combat at a time. Each combat is a turn-based card game: draw five,
-    spend energy, end turn, enemies resolve. Repeat until someone is dead.
+    Three properties made STS2 a harder RL problem than a first look
+    suggested, and they are the reason I picked it over environments with
+    smaller action spaces or fully-observable state.
   </p>
   <p>
-    Between combats, the player picks up new cards, rests at campfires, buys
-    relics in shops, and fights elites. Losing ends the run and resets to
-    floor 1 with a fresh deck. The spire runs three acts. Most runs end in
-    act 2.
+    <strong>The action space is combinatorial.</strong> A 5-card hand
+    against 2 enemies with 3 energy has hundreds of legal turn sequences,
+    most of which are bad. The agent doesn't just pick one action per turn;
+    it picks a sequence, and the sequence branches on which cards it has
+    drawn that turn. The action space changes every turn because the hand
+    changes every turn. This is not the fixed-size discrete action space
+    that most RL tutorial environments assume, and it's what drove the
+    61-logit-with-mask policy head decision in
+    <a href={`${base}deep-dive/neural-network/`}>the network DD</a>.
   </p>
   <p>
-    That's the whole game in two paragraphs. The rest of this article is the
-    part that matters for an agent — the mechanics that make turn-by-turn
-    decisions interesting, and the structural properties that make the full
-    run hard to optimize.
+    <strong>The state is partially observed.</strong> Three things are
+    hidden: the order of the draw pile, the enemy intents beyond the
+    current turn, and the composition of future card rewards. The draw pile
+    is the biggest of these — the cards the agent will draw next turn are
+    already determined by the shuffle, just not yet known. A policy that
+    assumes "I'll be able to play Strike next turn" is making an inference
+    about a distribution, not reading a fact. This is what forced the
+    mean-pooled pile summary in
+    <a href={`${base}deep-dive/input-vector-dd/`}>the input-vector DD</a>
+    — a fixed-size "what's in the pile" signal rather than positional
+    encoding of an unordered collection.
+  </p>
+  <p>
+    <strong>Credit assignment is long-horizon.</strong> A run is ~40
+    combats across three acts. A single card pickup in act 1 might be the
+    reason the run wins or loses in act 3. The reward signal is sparse —
+    the agent wins or loses a combat, wins or loses a run. The decisions
+    that caused each outcome are dozens or hundreds of steps in the past.
+    Any RL algorithm on this problem spends a lot of compute arguing with
+    itself about which decisions mattered, and that directly shaped the
+    reward-shaping iteration logged in the
+    <a href={`${base}learned/reward-shaping/`}>reward-shaping lesson</a>.
+  </p>
+  <p>
+    The rest of this article is the mechanics walk-through, kept only as
+    far as each mechanic is load-bearing for one of the decisions above.
   </p>
 
-  <h2 id="a-turn-in-detail">A turn in detail</h2>
-  <p>A turn goes through the same five phases every time:</p>
+  <h2 id="thirty-second">The 30-second version</h2>
+  <p>
+    Deck-building roguelike: climb a spire one combat at a time. Each combat
+    is a turn-based card game — draw five, spend energy, end turn, enemies
+    resolve. Between combats, the player picks up new cards, rests, buys
+    relics, and fights elites. Three acts; most runs end in act 2. Losing
+    ends the run and resets to floor 1 with a fresh deck. That frames the
+    episode: one combat is roughly an RL episode for training, a full run
+    is the meta-level credit-assignment horizon that&rsquo;s currently out
+    of scope.
+  </p>
+
+  <h2 id="a-turn-in-detail">A turn — and one RL step per card play</h2>
+  <p>
+    Every turn has the same five phases. Only one of them is an agent
+    action; the rest are environment. That asymmetry is the first modeling
+    call I had to make: the agent&rsquo;s step is <em>play one card or end
+    turn</em>, not &ldquo;commit a whole turn at once.&rdquo;
+  </p>
 
   <div class="stepper">
     <div class="stepper-row">
@@ -105,15 +153,21 @@ const headings = [
   </div>
 
   <p>
-    The agent takes its actions during <em>Play cards</em>. Everything else is
-    the environment's move. That one line is the cleanest framing I've found
-    for how this game maps to an RL episode.
+    Stepping at the card level (rather than &ldquo;one step per turn&rdquo;)
+    is why the action space is 61 logits of <em>card-slot × target-slot</em>
+    plus end-turn, instead of a combinatorial enumeration of whole turns.
+    The network picks one play, the environment ticks, and the state
+    refreshes for the next play.
   </p>
 
   <h2 id="cards-are-the-verbs">Cards are the verbs</h2>
   <p>
-    Every card is exactly one of three types, and the type determines how the
-    card behaves in the larger system.
+    Every card is exactly one of three types. The split matters because it
+    forced a decision about how to encode card type for the network &mdash;
+    as keyword-flag scalars on each hand slot, not as a separate head,
+    because the interactions (Strength boosts Attacks only; Weak reduces
+    Attacks only) are cheap to learn from a flag and expensive to learn
+    from an ID alone.
   </p>
   <p>
     <strong>Attack cards</strong> deal damage. <code>Strike</code> deals 6
@@ -143,10 +197,15 @@ const headings = [
     for the next eight turns. An Attack played on turn 8 pays off on turn 8.
   </p>
 
-  <h2 id="intent-telegraphing">Intent telegraphing</h2>
+  <h2 id="intent-telegraphing">Intent &mdash; reading, not predicting</h2>
   <div class="callout caveat">
-    <div class="callout-label">Caveat</div>
-    <p><em>Intent is the central partial-observation signal of this game.</em></p>
+    <div class="callout-label">Decision</div>
+    <p>
+      <em>Read the next enemy action from the intent icon; don&rsquo;t train
+      the agent to predict it.</em> Intent is the central partial-observation
+      signal of the game, and the whole shape of the state vector changes
+      depending on whether you feed it in or make the policy infer it.
+    </p>
   </div>
   <p>
     Every enemy in Slay the Spire 2 displays, above their sprite, an icon
@@ -173,33 +232,27 @@ const headings = [
     threat, not guessing which threat is coming.
   </p>
 
-  <h2 id="status-effects">Status effects carry state across turns</h2>
-  <p>Four status effects do most of the work:</p>
+  <h2 id="status-effects">Status effects drive the scalar budget</h2>
+  <p>
+    Four status effects do most of the work, and they&rsquo;re the reason
+    each enemy slot needs several scalar stacks on top of its embedding
+    &mdash; you can&rsquo;t infer &ldquo;Vulnerable 2&rdquo; from an enemy
+    ID, it has to be a number per slot. The normalization caps on those
+    scalars are the quiet footgun documented in the
+    <a href={`${base}learned/input-vector/`}>input-vector lesson</a>.
+  </p>
   <div class="status-chips">
     <span class="status-chip"><span class="sc-dot sc-red"></span><span class="sc-lbl"><strong>Poison</strong> — ticks every start-of-turn, deals that many damage, decrements by 1.</span></span>
     <span class="status-chip"><span class="sc-dot sc-yellow"></span><span class="sc-lbl"><strong>Weak</strong> — reduces affected side's attack damage by 25%. Stacks in duration, not severity.</span></span>
     <span class="status-chip"><span class="sc-dot sc-yellow"></span><span class="sc-lbl"><strong>Vulnerable</strong> — increases affected side's incoming attack damage by 50%. Same stacking as Weak.</span></span>
     <span class="status-chip"><span class="sc-dot sc-green"></span><span class="sc-lbl"><strong>Block</strong> — soaks the next incoming damage. Resets to 0 at the start of the player's next turn.</span></span>
   </div>
-  <ul>
-    <li>
-      <strong>Poison</strong> ticks every start-of-turn, deals that many
-      damage, decrements by 1. Compounds: a stack of 10 poison over three
-      turns is 27 total damage (10+9+8).
-    </li>
-    <li>
-      <strong>Weak</strong> reduces the affected side's attack damage by
-      25%. Lasts a number of turns. Stacks in duration, not in severity.
-    </li>
-    <li>
-      <strong>Vulnerable</strong> increases the affected side's incoming
-      attack damage by 50%. Same stacking rules as Weak.
-    </li>
-    <li>
-      <strong>Block</strong> soaks the next incoming damage. Resets to 0 at
-      the start of the player's next turn (almost always).
-    </li>
-  </ul>
+  <p>
+    Poison compounds: a stack of 10 over three turns is 27 total damage
+    (10 + 9 + 8). Block resets almost always — a small set of relics and
+    powers carry a fraction across turns, which is why the agent has to
+    learn "almost" rather than "always."
+  </p>
   <p>
     These four are why a Slay the Spire 2 combat is combinatorial rather
     than additive. A turn that deals 30 damage into a vulnerable target that
@@ -249,44 +302,14 @@ const headings = [
     most of the interesting design decisions live.
   </p>
 
-  <h2 id="why-rl">Why this is interesting for RL</h2>
-  <p>
-    Three properties make this a harder RL problem than a first look would
-    suggest.
-  </p>
-  <p>
-    <strong>The action space is combinatorial.</strong> A 5-card hand
-    against 2 enemies with 3 energy has hundreds of legal turn sequences,
-    most of which are bad. The agent doesn't just pick one action per turn;
-    it picks a sequence, and the sequence branches on which cards it has
-    drawn that turn. The action space changes every turn because the hand
-    changes every turn. This is not the fixed-size discrete action space
-    that most RL tutorial environments assume.
-  </p>
-  <p>
-    <strong>The state is partially observed.</strong> Three things are
-    hidden: the order of the draw pile, the enemy intents beyond the
-    current turn, and the composition of future card rewards. The draw pile
-    is the biggest of these — the cards the agent will draw next turn are
-    already determined by the shuffle, just not yet known. A policy that
-    assumes "I'll be able to play Strike next turn" is making an inference
-    about a distribution, not reading a fact.
-  </p>
-  <p>
-    <strong>Credit assignment is long-horizon.</strong> A run is ~40
-    combats across three acts. A single card pickup in act 1 might be the
-    reason the run wins or loses in act 3. The reward signal is sparse —
-    the agent wins or loses a combat, wins or loses a run. The decisions
-    that caused each outcome are dozens or hundreds of steps in the past.
-    Any RL algorithm on this problem spends a lot of compute arguing with
-    itself about which decisions mattered.
-  </p>
-  <p>
-    Those three properties are why I trained an agent on this game instead
-    of one with a smaller action space or a fully-observable state. The
-    short version: if it learns, the thing it learned is worth something.
-    If it doesn't, the thing that didn't work is interesting to diagnose.
-    The rest of the site is the diagnosing.
+  <p class="closing-note">
+    Net: the three structural properties at the top &mdash; combinatorial
+    action space, partial observation, long-horizon credit assignment
+    &mdash; are why I trained on this game instead of one with a smaller
+    action space or fully-observable state. If the agent learns, the thing
+    it learned is worth something. If it doesn&rsquo;t, the thing that
+    didn&rsquo;t work is interesting to diagnose. The rest of the site is
+    the diagnosing.
   </p>
 
   <p class="attribution">

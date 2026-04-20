@@ -1,0 +1,346 @@
+---
+import Post from '../../layouts/Post.astro';
+const base = import.meta.env.BASE_URL;
+
+const headings = [
+  { text: 'Why this head exists',      id: 'why' },
+  { text: 'The projection',            id: 'projection' },
+  { text: 'The scoring',               id: 'scoring' },
+  { text: 'Sampling w/o replacement',  id: 'sampling' },
+  { text: 'Training the head',         id: 'training' },
+  { text: 'Takeaways',                 id: 'takeaways' },
+];
+---
+<Post
+  title="The Card-Choice Head: the Fourth Head on the Trunk"
+  date="2026-04-19"
+  activeTab="deep-dive"
+  readingTime="8 min read"
+  headings={headings}
+>
+  <p class="deck">
+    The Neural Network deep dive named three heads. This post documents the
+    fourth &mdash; a card-reward picker that scores offered cards by
+    projecting the policy hidden state into card-embedding space, samples
+    without replacement, and carries no PPO gradient path.
+  </p>
+
+  {/* Four-head SVG hero — extends the three-head diagram from neural-network.astro */}
+  <svg class="nn-flow" viewBox="0 0 700 380" xmlns="http://www.w3.org/2000/svg" role="img"
+       aria-label="Network flow: five embedding tables plus a scalars block fan into a two-layer MLP trunk, which fans out to four heads — policy, value, a dashed discard helper, and an amber-dashed choice head labeled no PPO grad path.">
+    <g class="nn-flow-svg">
+      <text class="nn-section-label" x="20" y="16">INPUTS</text>
+      <text class="nn-section-label" x="300" y="16">TRUNK</text>
+      <text class="nn-section-label" x="540" y="16">HEADS</text>
+
+      <rect class="nn-emb" x="20" y="30"  width="170" height="32" rx="14" ry="14"/>
+      <text class="nn-label" x="30" y="50">card_emb</text>
+      <text class="nn-dim"   x="170" y="50" text-anchor="end">16d</text>
+
+      <rect class="nn-emb" x="20" y="72"  width="170" height="32" rx="14" ry="14"/>
+      <text class="nn-label" x="30" y="92">enemy_emb</text>
+      <text class="nn-dim"   x="170" y="92" text-anchor="end">16d</text>
+
+      <rect class="nn-emb" x="20" y="114" width="170" height="32" rx="14" ry="14"/>
+      <text class="nn-label" x="30" y="134">relic_emb</text>
+      <text class="nn-dim"   x="170" y="134" text-anchor="end">8d</text>
+
+      <rect class="nn-emb" x="20" y="156" width="170" height="32" rx="14" ry="14"/>
+      <text class="nn-label" x="30" y="176">pile_emb</text>
+      <text class="nn-dim"   x="170" y="176" text-anchor="end">8d</text>
+
+      <rect class="nn-emb" x="20" y="198" width="170" height="32" rx="14" ry="14"/>
+      <text class="nn-label" x="30" y="218">power_emb</text>
+      <text class="nn-dim"   x="170" y="218" text-anchor="end">8d</text>
+
+      <rect class="nn-scalar" x="20" y="240" width="170" height="32"/>
+      <text class="nn-label" x="30" y="260">scalars</text>
+      <text class="nn-dim"   x="170" y="260" text-anchor="end">18d</text>
+
+      <path class="nn-arrow" d="M 190 46  C 220 46, 235 100, 258 148"/>
+      <path class="nn-arrow" d="M 190 88  C 220 88, 235 120, 258 148"/>
+      <path class="nn-arrow" d="M 190 130 L 258 148"/>
+      <path class="nn-arrow" d="M 190 172 L 258 148"/>
+      <path class="nn-arrow" d="M 190 214 C 220 214, 235 180, 258 150"/>
+      <path class="nn-arrow" d="M 190 256 C 225 256, 238 200, 258 151"/>
+
+      <text class="nn-dim" x="254" y="140" text-anchor="end">concat</text>
+
+      <path class="nn-arrow" d="M 260 150 L 298 150"/>
+      <polygon class="nn-arrow-head" points="298,146 305,150 298,154"/>
+
+      <rect class="nn-layer" x="300" y="112" width="140" height="38" rx="3"/>
+      <text class="nn-label" x="370" y="130" text-anchor="middle">Linear &middot; LayerNorm &middot; ReLU</text>
+      <text class="nn-dim"   x="370" y="144" text-anchor="middle">256</text>
+
+      <rect class="nn-layer" x="300" y="160" width="140" height="38" rx="3"/>
+      <text class="nn-label" x="370" y="178" text-anchor="middle">Linear &middot; LayerNorm &middot; ReLU</text>
+      <text class="nn-dim"   x="370" y="192" text-anchor="middle">256</text>
+
+      <path class="nn-arrow" d="M 370 150 L 370 160"/>
+
+      <path class="nn-arrow" d="M 440 172  C 480 172, 500 100, 536 70"/>
+      <polygon class="nn-arrow-head" points="536,66 543,70 536,74"/>
+
+      <path class="nn-arrow" d="M 440 180  C 480 180, 500 180, 536 180"/>
+      <polygon class="nn-arrow-head" points="536,176 543,180 536,184"/>
+
+      <path class="nn-arrow-dashed" d="M 440 188  C 480 188, 500 235, 536 255"/>
+      <polygon class="nn-arrow-head" points="536,251 543,255 536,259" opacity="0.6"/>
+
+      {/* Fourth head — the choice head, amber-dashed */}
+      <path class="nn-arrow-dashed-amber" d="M 440 196  C 480 210, 500 315, 536 330"/>
+      <polygon class="nn-arrow-head nn-arrow-head-amber" points="536,326 543,330 536,334"/>
+
+      <polygon class="nn-policy" points="600,42 660,70 600,98 540,70"/>
+      <text class="nn-label" x="600" y="66" text-anchor="middle">policy head</text>
+      <text class="nn-dim"   x="600" y="80" text-anchor="middle">61 actions</text>
+
+      <circle class="nn-value" cx="600" cy="180" r="30"/>
+      <text class="nn-label" x="600" y="178" text-anchor="middle">value</text>
+      <text class="nn-dim"   x="600" y="192" text-anchor="middle">V(s)</text>
+
+      <rect class="nn-discard" x="545" y="244" width="110" height="28" rx="3"/>
+      <text class="nn-label nn-discard-lbl" x="600" y="258" text-anchor="middle">discard head</text>
+      <text class="nn-label-dim" x="600" y="270" text-anchor="middle">aux &middot; 10</text>
+
+      <rect class="nn-choice" x="540" y="318" width="120" height="30" rx="3"/>
+      <text class="nn-label" x="600" y="334" text-anchor="middle">choice head</text>
+      <text class="nn-choice-label" x="600" y="346" text-anchor="middle">no PPO grad path</text>
+    </g>
+  </svg>
+
+  <div class="result-chip">
+    <span class="num">4 heads</span>
+    <span class="lbl">&middot; 1 without a PPO gradient path</span>
+  </div>
+
+  <h2 id="why">Why this head exists</h2>
+  <p>
+    The combat policy I&rsquo;ve been writing about in the other Deep Dives
+    plays turns, cards, and targets. It ends with a win or a loss. What it
+    doesn&rsquo;t do, yet, is choose the cards that go into the deck. The
+    card-choice head is the smallest step toward that &mdash; a head that
+    fires only at out-of-combat reward prompts and picks one of the offered
+    cards.
+  </p>
+  <p>
+    Card-reward prompts look like this: after a combat ends, the game
+    offers a small set of new cards and the player picks one (or sometimes
+    skips). Environmentally, it&rsquo;s a <code>choice_handler</code>
+    callback: the C# mod passes <code>options: list[dict]</code> plus
+    <code>min_select</code> / <code>max_select</code> counts, and the actor
+    side returns a list of selected indices plus a log-prob. The
+    head&rsquo;s whole job is to produce that selection.
+  </p>
+  <p>
+    The curriculum reaches the point where this matters at what I&rsquo;ve
+    been calling &ldquo;stage 10.5&rdquo; &mdash; a planned extension past
+    the shipped 13-stage curriculum, a V-as-reward deck-building milestone
+    where the trained combat policy stops playing random decks and starts
+    building its own. Not live yet; the head exists for that moment.
+    Everything else in this article is the machinery that gets it ready.
+  </p>
+
+  <h2 id="projection">The projection</h2>
+  <pre><code>{`self.choice_proj = nn.Linear(HIDDEN_DIM, CARD_EMB_DIM)`}</code></pre>
+  <p>
+    One linear layer, no nonlinearity on the way out. <code>HIDDEN_DIM</code>
+    is 256 &mdash; the output of the shared trunk. <code>CARD_EMB_DIM</code>
+    is 16 &mdash; the width of the card embedding table. The projection
+    maps policy hidden state into the same 16-dim space the card embeddings
+    live in.
+  </p>
+  <p>
+    The choice to make this a <code>nn.Linear</code> rather than a small
+    MLP was deliberate. A multi-layer projection would have more
+    representational capacity, but it would also need to re-learn the card
+    representation from scratch &mdash; there&rsquo;s no gradient signal
+    reaching the choice head from the shared trunk during combat steps,
+    because the choice head only fires at card-reward prompts. The linear
+    projection keeps the parameter count tiny (<code>256 &times; 16 = 4096</code>
+    weights plus 16 biases) and keeps the relationship between hidden state
+    and card space invertibly simple.
+  </p>
+
+  <h2 id="scoring">The scoring</h2>
+  <pre><code>{`h = self._trunk_forward(enc)                  # [1, HIDDEN_DIM]
+proj = self.choice_proj(h)                     # [1, CARD_EMB_DIM]
+opt_ids = torch.tensor(option_card_ids, dtype=torch.long)
+opt_emb = self.card_emb(opt_ids)               # [N, CARD_EMB_DIM]
+scores = (proj @ opt_emb.T).squeeze(0)         # [N]`}</code></pre>
+  <p>
+    <code>opt_emb</code> is the card embedding table looked up at the
+    offered-card vocab indices &mdash; <strong>the same table</strong> the
+    combat policy uses as input. That&rsquo;s the hypothesis of this head
+    in a sentence: the combat trunk already learned a 16-dim representation
+    of every card in the vocabulary; similar cards cluster in that space
+    because they appear in similar contexts and benefit from similar value
+    estimates. The choice head&rsquo;s projection asks &ldquo;which of
+    these card embeddings is closest, in this space, to what the policy
+    would play right now?&rdquo; The dot product is the answer.
+  </p>
+  <p>
+    If instead the head had its own MLP over card features, it would need
+    to re-learn the card similarity structure from a much smaller number of
+    gradient updates &mdash; card-reward prompts fire once per combat, not
+    once per step. Reusing <code>card_emb</code> inherits every card-level
+    gradient update the combat head produces. That&rsquo;s the same bet the
+    rest of the curriculum is making at stage 10.5: that <code>V(state)</code>
+    from the combat model is a usable reward signal for the deck-building
+    model, because the combat model already understands cards.
+  </p>
+  <p>
+    No softmax temperature is applied to the scores. Entropy at this head
+    is controlled by how well-separated the card embeddings become during
+    combat training. If <code>card_emb</code> packs similar cards into
+    tight clusters, the head is sharper; if it spreads them out, softer.
+    That&rsquo;s not a tunable parameter at this level &mdash; it&rsquo;s
+    an emergent property of the combat training that this head is standing
+    on.
+  </p>
+
+  <h2 id="sampling">Sampling without replacement</h2>
+  <pre><code>{`selected = []
+total_log_prob = torch.tensor(0.0)
+remaining_mask = torch.ones(len(option_card_ids), dtype=torch.bool)
+
+for _ in range(n_select):
+    masked_scores = scores.masked_fill(~remaining_mask, -1e9)
+    dist = torch.distributions.Categorical(logits=masked_scores)
+    idx = dist.sample()
+    total_log_prob = total_log_prob + dist.log_prob(idx)
+    selected.append(idx.item())
+    remaining_mask[idx] = False
+
+return selected, total_log_prob`}</code></pre>
+  <p>
+    Standard card-reward prompts are pick-one-of-N, but the interface
+    allows <code>n_select &gt; 1</code> for the cases where the game asks
+    for multiple picks. The sampling loop runs one pick at a time,
+    subtracting each picked index from the remaining pool before the next
+    draw.
+  </p>
+  <p>
+    <code>masked_fill(~remaining_mask, -1e9)</code> uses the same
+    finite-margin trick the policy head uses for illegal-action masking.
+    <code>-1e9</code> instead of <code>float('-inf')</code> so
+    <code>logsumexp</code> gradients don&rsquo;t poison with <code>NaN</code>
+    downstream. The policy head&rsquo;s write-up in the
+    <a href={`${base}deep-dive/neural-network/`}>Neural Network deep dive</a> has
+    the full argument for the finite margin. Both heads share the trick.
+  </p>
+  <p>
+    The returned <code>log_prob</code> is the sum of per-pick log-probs
+    across the selection order &mdash; which, as it turns out, is exactly
+    the thing the PPO importance ratio can&rsquo;t re-evaluate.
+  </p>
+
+  <div class="callout caveat">
+    <div class="callout-label">Caveat &middot; the log-prob isn&rsquo;t in <code>old_lp</code></div>
+    <p>
+      The log-prob this head returns is deliberately excluded from the step
+      log-prob pushed to the learner. PPO would need to recompute it from
+      the stored transition at training time, and it can&rsquo;t:
+      <code>choice_proj</code> has no gradient path from the PPO loss, the
+      sampling order isn&rsquo;t stored, and the <code>remaining_mask</code>
+      evolution can&rsquo;t be reconstructed. The comment now in
+      <code>actor_proxy.handle_connection</code> &mdash; &ldquo;Don&rsquo;t
+      include choice log_probs &mdash; PPO can&rsquo;t re-evaluate
+      them&rdquo; &mdash; is the receipt for having learned that the hard
+      way. The Learned confession
+      <a href={`${base}learned/choice-head-silent-corruption/`}>choice-head-silent-corruption</a>
+      is the full story.
+    </p>
+  </div>
+
+  <h2 id="training">Training the head</h2>
+  <p>
+    <code>choice_proj</code> has no PPO gradient path today, which means
+    the head is making selections but not learning from them. That&rsquo;s
+    a training-loop question the project hasn&rsquo;t fully resolved yet.
+    The two candidate answers:
+  </p>
+  <p>
+    <strong>A second PPO loop, choice-event-only.</strong> Store the
+    sampling order with each card-reward transition. At training time, run
+    <code>choose_cards</code> through the learner&rsquo;s copy of the
+    policy against the stored order, produce a &ldquo;new&rdquo; log-prob,
+    and ratio it against the stored &ldquo;old&rdquo; log-prob. Build a
+    separate clipped-surrogate objective with its own clip range and
+    entropy coefficient. Train on episodic return as reward (the
+    long-horizon win rate the combat policy sees). The cost: a second set
+    of PPO hyperparameters, plus sampling-order storage in every stored
+    transition.
+  </p>
+  <p>
+    <strong>Frozen combat, V-as-reward.</strong> Hold the combat policy
+    and value networks fixed. Run the card-choice head forward on
+    card-reward prompts and take the selection. Use
+    <code>V(state_after_pick)</code> &mdash; the frozen value network&rsquo;s
+    estimate of the post-pick state &mdash; as the reward signal. Update
+    <code>choice_proj</code> by policy-gradient directly on that reward.
+    No importance ratio, no sampling-order storage, no second PPO loop.
+    The cost: the combat policy is a fixed bar &mdash; improvements on the
+    choice side can&rsquo;t back-propagate into better combat play.
+  </p>
+  <p>
+    The current plan is the second. The planned &ldquo;stage 10.5&rdquo;
+    extension is defined around exactly that setup: freeze the combat
+    network, train the card-choice head with V as reward, measure whether
+    the policy with its own deck outperforms the policy with a random deck.
+    Getting there requires the head to exist and produce selections first;
+    that&rsquo;s what this article is documenting.
+  </p>
+
+  <h2 id="takeaways">Takeaways</h2>
+  <div class="takeaways-grid">
+    <div class="tg-tile">
+      <span class="tg-n">01</span>
+      <span class="tg-lbl"><strong>Reuse the combat card embedding.</strong> The dot product against <code>card_emb</code> is the design point &mdash; it inherits every card-level gradient the combat head has already produced.</span>
+    </div>
+    <div class="tg-tile">
+      <span class="tg-n">02</span>
+      <span class="tg-lbl"><strong>Sampling without replacement = iterate + mask.</strong> The <code>remaining_mask</code> zeros out already-picked indices; <code>masked_fill(~mask, -1e9)</code> keeps gradients finite.</span>
+    </div>
+    <div class="tg-tile">
+      <span class="tg-n">03</span>
+      <span class="tg-lbl"><strong>No PPO gradient path &rArr; no PPO training.</strong> The choice log-prob is deliberately excluded from <code>old_lp</code>; a separate training loop (V-as-reward on frozen combat) picks up the gradient work.</span>
+    </div>
+    <div class="tg-tile">
+      <span class="tg-n">04</span>
+      <span class="tg-lbl"><strong>One linear layer, one dot product, one mask.</strong> The simplest structural thing that could work &mdash; and the right one to try before anything more elaborate.</span>
+    </div>
+  </div>
+</Post>
+
+<style>
+  /* Card-choice-head additions — amber-dashed "fourth head" treatment that
+     extends the .nn-flow family in global.css. Scoped to this page so it
+     doesn't affect the three-head diagram on the neural-network post. */
+  .nn-flow .nn-choice {
+    fill: rgba(240, 166, 72, 0.08);
+    stroke: var(--accent);
+    stroke-width: 1.4;
+    stroke-dasharray: 4 3;
+  }
+  .nn-flow .nn-arrow-dashed-amber {
+    stroke: var(--accent);
+    stroke-width: 1.2;
+    fill: none;
+    stroke-dasharray: 4 3;
+    opacity: 0.8;
+  }
+  .nn-flow .nn-arrow-head-amber {
+    fill: var(--accent);
+    opacity: 0.85;
+  }
+  .nn-flow .nn-choice-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    fill: var(--accent);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+</style>

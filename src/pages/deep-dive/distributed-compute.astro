@@ -16,6 +16,7 @@ const headings = [
   title="Distributed compute — eleven laptops, one TCP port, and a scheduled task"
   date="2026-04-19"
   activeTab="deep-dive"
+  readingTime="8 min read"
   headings={headings}
 >
   <p class="deck">
@@ -143,7 +144,7 @@ stsBot10=10.0.0.82`}</code></pre>
     disconnected for 40,049 seconds, which is roughly eleven hours — I
     shut its lid yesterday and forgot. The other eight are producing.
   </p>
-  <p>Fleet CPM at that moment: 175. Fleet episodes-to-date: about 259,000.</p>
+  <p>Fleet CPM at that moment: 175. Fleet episodes-to-date at that snapshot: about 259,000 (the home-page tile is live and will read higher).</p>
 
   <h2 id="the-configs">The configs that make this go</h2>
   <p>
@@ -160,7 +161,7 @@ port = 9998
 [actor]
 game_port = 9999
 headless  = true
-instances = 1`}</code></pre>
+instances = 3`}</code></pre>
     </section>
     <section class="cfg-card">
       <header class="cfg-header">actor_proxy.py · constants</header>
@@ -381,7 +382,7 @@ MINIBATCH_SIZE      = 64`}</code></pre>
   <ul>
     <li><strong>Workers:</strong> 11 Windows laptops, <code>stsBot0</code>..<code>stsBot10</code>, static IPs on <code>10.0.0.0/24</code></li>
     <li><strong>Learner:</strong> single GPU on the host PC, TCP listener on <code>0.0.0.0:9998</code></li>
-    <li><strong>Actor-side games:</strong> <code>worker_config.toml</code> sets <code>instances</code> per worker (1 to 4 depending on thermals)</li>
+    <li><strong>Actor-side games:</strong> <code>worker_config.toml</code> sets <code>instances</code> per worker (default 3, tuned per machine — 2 to 4 depending on thermals)</li>
     <li><strong>Protocol:</strong> length-prefixed messages over a long-lived TCP socket, one mutex-protected request at a time per actor</li>
     <li><strong>Telemetry cadence:</strong> <code>WorkerStats.combats_per_min</code> computed from a 60-second rolling window; <code>data/workers.json</code> rewritten every 5 s</li>
     <li><strong>Rollout script:</strong> <code>scripts/main/restart_workers.bat</code> — reads <code>workers.txt</code>, SSH + <code>schtasks</code> per machine, sequential</li>

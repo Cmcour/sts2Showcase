@@ -1,8 +1,10 @@
 ---
 import Post from '../../layouts/Post.astro';
 
+const base = import.meta.env.BASE_URL;
+
 const headings = [
-  { text: 'Fundamentals',              id: 'fundamentals' },
+  { text: 'Decisions in one screen',   id: 'decisions' },
   { text: 'How the pieces fit',        id: 'how-it-fits' },
   { text: 'Stop 1 · model.py',         id: 'stop-1-model' },
   { text: 'Stop 2 · reward.py',        id: 'stop-2-reward' },
@@ -17,52 +19,53 @@ const headings = [
   title="Reinforcement Learning, Grounded In One Project"
   date="2026-04-19"
   activeTab="deep-dive"
+  readingTime="8 min read"
   headings={headings}
 >
   <p class="deck">
-    Six words do the conceptual work. Four files do the actual work. Here they
-    are, side by side.
+    Four files, one on-policy PPO learner, no replay buffer, no target
+    network, no broker between actor and learner. This is a tour of what
+    those four files commit to, and why each commitment looked like the
+    lowest-risk call for a real-time STS2 environment.
   </p>
 
-  {/* Fundamentals card hero — six term/definition tiles */}
-  <section class="fundamentals-card" id="fundamentals" aria-label="Reinforcement learning vocabulary">
+  {/* Decisions card hero — six decision/rationale tiles */}
+  <section class="fundamentals-card" id="decisions" aria-label="Project decisions in one screen">
     <div class="fc-cell">
-      <div class="term">Agent</div>
-      <div class="def">The decision-maker. In code, a neural network that maps state to an action distribution.</div>
+      <div class="term">PPO, on-policy</div>
+      <div class="def">Picked over DQN/SAC for the smaller pipeline — no replay buffer, no target network, no off-policy correction to babysit.</div>
     </div>
     <div class="fc-cell">
-      <div class="term">Environment</div>
-      <div class="def">Everything the agent interacts with. Returns <code>(state, reward, done)</code> per action.</div>
+      <div class="term">One trunk, three heads</div>
+      <div class="def">Policy + value + discard share a 256-dim backbone. PPO assumes it; one net means both objectives gradient-share through the same features.</div>
     </div>
     <div class="fc-cell">
-      <div class="term">Reward</div>
-      <div class="def">The scalar the agent is trying to maximize the expected discounted sum of.</div>
+      <div class="term">Scale-matched reward</div>
+      <div class="def">Per-step damage and terminal outcome both top out near ±2.0 — dying slowly is never much worse than dying fast, so the policy can't learn to stall.</div>
     </div>
     <div class="fc-cell">
-      <div class="term">Policy</div>
-      <div class="def">π(a | s). Distribution over actions given the current state.</div>
+      <div class="term">WEIGHT_PULL_EVERY = 16</div>
+      <div class="def">Tied to <code>EPISODES_PER_UPDATE</code>. Actors pull fresh weights every learner step — bounds the actor-learner drift PPO depends on.</div>
     </div>
     <div class="fc-cell">
-      <div class="term">Value</div>
-      <div class="def">V(s). Expected future reward from a state — a learned baseline the policy gradient is compared against.</div>
+      <div class="term">ENTROPY_COEF = 0.04</div>
+      <div class="def">4× the paper default. 61-logit action space gets masked down to 5–15 legal actions per step, so raw entropy is smaller than Atari-tuned defaults assume.</div>
     </div>
     <div class="fc-cell">
-      <div class="term">PPO</div>
-      <div class="def">The update rule. Policy-gradient with a clipped ratio so no single step moves the policy too far.</div>
+      <div class="term">Two processes, TCP between</div>
+      <div class="def">Actor proxy runs the env loop in patched STS2; learner runs PPO. One TCP socket, no broker — the distributed-systems write-up has the rest.</div>
     </div>
   </section>
   <p class="orienting">
-    Six words do most of the work. The rest of this post is where each one
+    Six decisions, four files. The rest of this post is where each decision
     lives in the repo.
   </p>
 
   <h2 id="how-it-fits">How the pieces fit</h2>
   <p>
-    Most RL articles open on the canonical cartoon — agent box, environment
-    box, three labeled arrows — and work outward from there. I'm skipping
-    it. The four files in this project are the cartoon made concrete, and I
-    find it faster to introduce the vocabulary in a card and then point at
-    the code.
+    Each of the four files is one of those decisions made concrete. I'm
+    skipping the agent-environment-arrows cartoon — the DD reader doesn't
+    need it, and pointing at code is faster than relabeling a diagram.
   </p>
   <p>
     The training pipeline splits across two processes. An actor proxy runs
@@ -86,6 +89,10 @@ const headings = [
       <code>Linear(256, MAX_HAND)</code> and scores which card to pitch at
       mid-turn discard prompts. Embeddings for cards, enemies, relics, and
       powers feed the trunk — the input-vector article covers those.
+      (A fourth head, <code>choice_proj</code>, was added later for card-choice
+      events; it sits outside the PPO loss and has its own write-up — see the
+      <a href={`${base}deep-dive/card-choice-head/`}>Card-Choice Head</a> deep
+      dive.)
     </p>
     <pre><code>{`def forward(self, enc):
     h = self._trunk_forward(enc)
