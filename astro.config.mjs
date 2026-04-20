@@ -3,5 +3,5 @@ import { defineConfig } from 'astro/config';
 
 export default defineConfig({
   site: 'https://cmcour.github.io',
-  base: '/sts2Showcase',
+  base: '/sts2Showcase/',
 });
