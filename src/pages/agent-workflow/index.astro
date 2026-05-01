@@ -2,19 +2,26 @@
 import Base from '../../layouts/Base.astro';
 const base = import.meta.env.BASE_URL;
 
-const posts: { slug: string; title: string; date: string; category: string; excerpt: string }[] = [];
+type Post = {
+  slug: string;
+  title: string;
+  date: string;
+  category: string;
+  excerpt: string;
+};
+const posts: Post[] = [];
 ---
-<Base title="What I Learned" activeTab="learned">
+<Base title="Agent Workflow" activeTab="agent-workflow">
   <main class="frame">
     <div class="index-head">
-      <h1>What I Learned</h1>
-      <p class="sub">Lessons from building a reinforcement learning system for a complex card game.</p>
+      <h1>Agent Workflow</h1>
+      <p class="sub">How I set up Claude Code, Codex, subagents, skills, hooks, and the rest of my AI coding stack.</p>
     </div>
 
     <ul class="post-list">
       {posts.map(post => (
         <li class="post-item">
-          <a href={`${base}learned/${post.slug}/`}>
+          <a href={`${base}agent-workflow/${post.slug}/`}>
             <div class="post-kicker">{post.category}</div>
             <div class="post-top">
               <div class="post-title">{post.title}</div>
@@ -27,5 +34,3 @@ const posts: { slug: string; title: string; date: string; category: string; exce
     </ul>
   </main>
 </Base>
-
-<!-- _v5 Workshop Warm blog index — amber kicker, bold title, dim lede, mono date right. 2026-04-18_ -->
