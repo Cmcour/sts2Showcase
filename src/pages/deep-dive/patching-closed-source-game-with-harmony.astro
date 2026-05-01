@@ -1,0 +1,281 @@
+---
+import Post from '../../layouts/Post.astro';
+
+const headings = [
+  { text: 'The option space', id: 'option-space' },
+  { text: 'Where the patches land', id: 'where-the-patches-land' },
+  { text: 'The Finalizer-pattern saga', id: 'finalizer-pattern-saga' },
+  { text: 'What I left vanilla', id: 'what-i-left-vanilla' },
+  { text: 'What this bought', id: 'what-this-bought' },
+  { text: 'The principle that compounded', id: 'principle' },
+];
+---
+
+<Post
+  title="Patching a Closed-Source Game with Harmony"
+  date="April 2026"
+  activeTab="deep-dive"
+  category="Deep Dive"
+  readingTime="~9 min"
+  headings={headings}
+>
+  <div class="tldr">
+    <div class="tldr-label">TL;DR</div>
+    <p>
+      Slay the Spire 2 is closed-source. Getting a Python policy to talk to a compiled C# game came down to four options. The pick was <strong>Harmony as primary, Cecil as fallback for what Harmony can't reach</strong> — a "belt-and-suspenders" split. The reason Harmony won wasn't power; it was failure mode. Harmony fails loudly. Cecil fails silently. That principle compounded into every layer of the project that came after.
+    </p>
+  </div>
+
+  <p class="lede">The first decision the project had to make wasn't about networks or PPO. It was about whether an environment could exist at all.</p>
+
+  <p>Slay the Spire 2 is a Godot-hosted game with the gameplay logic compiled into a managed C# DLL — closed source, no official mod API, no trainer hook, no "expose state for an external process" surface. The training loop only exists if there's an environment, and the environment only exists if I could get a compiled C# game to talk to a Python policy. So the first month of the project wasn't reward shaping or curriculum design. It was deciding how to inject myself into the game's update path.</p>
+
+  <p>This is the decision document for that month.</p>
+
+  <h2 id="option-space">The option space</h2>
+
+  <p>Four ways to put your code where the game's code is:</p>
+
+  <ol>
+    <li><strong>Decompile, edit C#, recompile.</strong> Use ILSpy to dump the DLL to source, edit, build a new DLL, drop it in. One-time cost is low; ongoing cost is unbounded. The game updates roughly weekly. Every update is a fresh decompile, a fresh diff, a fresh recompile, a fresh chance to introduce a subtle behavioral drift from vanilla. Rejected on maintenance.</li>
+    <li><strong>Memory injection.</strong> Attach to the running process, find function pointers, overwrite jump targets at runtime. Maximally flexible; maximally invasive. Crashes are debuggability disasters because the running game state diverges from any source you can read. Rejected on cost-of-failure.</li>
+    <li><strong>Cecil — IL rewrite on disk before load.</strong> Patch the assembly file (<code>sts2.dll</code>) using Mono.Cecil, write the patched bytes back to disk, ship the patched DLL. Survives any Godot/.NET edge case because the IL is mutated before the runtime sees it. Doesn't survive game updates: every Steam update overwrites the patched DLL with vanilla. Strong for things Harmony can't reach.</li>
+    <li><strong>Harmony — runtime detours via JIT-time patches.</strong> Inject a separate mod assembly that registers Prefix/Postfix/Finalizer patches against the game's compiled methods. Patches are applied at JIT time, after the assembly is already loaded. Survives game updates as long as method signatures don't break. Source stays as readable C# with <code>[HarmonyPatch(typeof(NCharacterSelectButton), "Select")]</code> decorators that read like the mod's intent.</li>
+  </ol>
+
+  <div class="callout">
+    <div class="callout-label">Belt-and-suspenders</div>
+    <p>The pick was <strong>Harmony as primary, Cecil as fallback for what Harmony can't reach.</strong> The mod's source comments call this "belt-and-suspenders." Cecil patches the IL before load (<code>Sts2Patcher</code> is a separate tool that does this); Harmony patches at JIT time. Even if a Cecil edit fails silently in some corner case, the Harmony prefixes short-circuit the same call paths unconditionally. Even if Steam overwrites the Cecil-patched DLL on update, Harmony still runs because the mod assembly is separate.</p>
+  </div>
+
+  <h2 id="where-the-patches-land">Where the patches land</h2>
+
+  <p>The mod is at <code>src/AutoSlayRestartMod/</code> in the project. It's a stand-alone C# project that builds to a single <code>.dll</code>, dropped into <code>&lt;Steam&gt;/steamapps/common/Slay the Spire 2/mods/AutoSlayRestartMod/</code>. <code>Plugin.Initialize()</code> (annotated with <code>[ModInitializer("Initialize")]</code>, a STS2-specific bootstrap attribute) loads the config, opens the TCP bridge, and calls <code>harmony.PatchAll()</code> — Harmony then auto-discovers every <code>[HarmonyPatch]</code> class in the assembly.</p>
+
+  <p>The patches fall into three buckets.</p>
+
+  <p><strong>Bucket 1 — character + run lifecycle.</strong> These are the ones that make a single training session look like an infinite stream of episodes:</p>
+
+  <ul>
+    <li><code>[HarmonyPatch(typeof(NCharacterSelectButton), "Select")]</code> — <code>ForceCharacterPatch.Prefix</code>. AutoSlay (the game's existing internal auto-play system) picks a character at random; the prefix redirects to whichever character the mod's config locks on (<code>CHARACTER.SILENT</code> for current training). Runs only when <code>AutoSlayer.IsActive</code> is true, so interactive play is unaffected.</li>
+    <li><code>[HarmonyPatch(typeof(AutoSlayer), "Start")]</code> — <code>CaptureStartPatch.Prefix</code>. Captures the active <code>AutoSlayer</code> instance into <code>RestartContext.Instance</code> so other patches can call back into it. Also generates a fresh per-run GUID via <code>Phase3Context.NewRun(seed)</code> — every observation envelope sent during this run carries the same <code>run_id</code>.</li>
+    <li><code>[HarmonyPatch(typeof(AutoSlayer), "QuitGame")]</code> — <code>RestartOnQuitPatch.Prefix</code>. When AutoSlay decides to quit, return <code>false</code> to skip the original method, then asynchronously call <code>instance.Start(newSeed)</code>. The next episode begins immediately.</li>
+    <li><code>[HarmonyPatch(typeof(NGameOverScreen), "AfterOverlayOpened")]</code> — <code>SkipGameOverScreenPatch.Postfix</code>. The game-over screen finishes opening, the postfix calls <code>NGame.Instance!.ReturnToMainMenuAfterRun()</code>, the death animation gets skipped. Episodes terminate fast.</li>
+  </ul>
+
+  <p>That's the entire restart machinery: four patches. None of them touch combat math, scoring, or RNG. The agent plays the same game a human plays.</p>
+
+  <p><strong>Bucket 2 — observation + action injection.</strong> Combat-side patches that surface state to the policy and accept actions back. These live under <code>src/AutoSlayRestartMod/Rl/</code> — <code>RlBridge.cs</code> (TCP), <code>StateSerializer.cs</code> (state → JSON), <code>RunStateSerializer.cs</code> (run-level state), <code>RlCombatPatch.cs</code> (per-combat hooks), <code>RlCardSelector.cs</code> (card-reward picks), <code>Phase3PickerPatch.cs</code> / <code>Phase3RestSitePatch.cs</code> / <code>Phase3BossVictoryPatch.cs</code> (route-level decisions). These deserve their own deep dive (Day 4 or Day 7); this article is about <em>whether the mod can exist at all</em>, not about what it sends.</p>
+
+  <p><strong>Bucket 3 — defensive patches.</strong> The ones that exist because the game updates and the mod has to survive.</p>
+
+  <h2 id="finalizer-pattern-saga">The Finalizer-pattern saga (MM-018, MM-020)</h2>
+
+  <p>In a beta .tscn update, the game's GameOverScreen scene was rebuilt and several <code>%-prefixed</code> unique-name child nodes (<code>%CardCount</code>, <code>%RelicCount</code>, <code>%PotionCount</code>, <code>%EnemyCount</code>, <code>%EpochCount</code>) were removed or renamed. Godot's <code>GetNode&lt;T&gt;</code> for a missing unique-name throws <code>NullReferenceException</code> inside the node's <code>_Ready()</code>.</p>
+
+  <div class="callout">
+    <div class="callout-label">MM-020 — Cascade</div>
+    <p>One <code>_Ready()</code> throw three layers down stalled the entire fleet through a six-step chain:</p>
+  </div>
+
+  <div class="cascade">
+    <div class="cascade-step"><div class="num">1</div><div class="text"><code>NGameOverScreen</code> never finishes initialising.</div></div>
+    <div class="cascade-step"><div class="num">2</div><div class="text"><code>AfterOverlayOpened()</code> is never called by the game's overlay stack.</div></div>
+    <div class="cascade-step"><div class="num">3</div><div class="text"><code>SkipGameOverScreenPatch.Postfix()</code> never fires → <code>ReturnToMainMenuAfterRun()</code> is never invoked.</div></div>
+    <div class="cascade-step"><div class="num">4</div><div class="text"><code>AutoSlayer.WaitForRewardsScreenAsync()</code> times out: <code>AutoSlayTimeoutException: Rewards screen did not appear after combat</code>.</div></div>
+    <div class="cascade-step"><div class="num">5</div><div class="text">Run aborts → 0 picker records → run dropped at the learner.</div></div>
+    <div class="cascade-step"><div class="num">6</div><div class="text"><code>Phase3Bridge.ReceiveFromLearnerAsync</code> never drains the TCP buffer → weight-push bytes accumulate unread → eternal fallback.</div></div>
+  </div>
+
+  <p>A six-step cascade triggered by one <code>_Ready()</code> throw three layers down. The fleet just stalled.</p>
+
+  <p>The fix wasn't a Prefix that skipped <code>_Ready()</code>. A <code>Prefix(return false)</code> on <code>NGameOverScreen._Ready()</code> would skip <em>all</em> of <code>_Ready</code> — including the bookkeeping the game does internally (state registration, signal connections), an unknown subset of which may be load-bearing for things other than the summary UI.</p>
+
+  <p>The fix was a <strong>HarmonyFinalizer</strong> — a try/catch wrapped around the entire method. The Finalizer:</p>
+
+  <ul>
+    <li>Returns <code>null</code> to suppress the exception, so the node stays alive even if <code>_Ready</code> died mid-init.</li>
+    <li>Manually invokes <code>AfterOverlayOpened()</code> via reflection, so the downstream <code>SkipGameOverScreenPatch.Postfix</code> fires anyway and the run restarts.</li>
+    <li>Guards on <code>AutoSlayer.IsActive</code> so interactive play still surfaces the bug to MegaCrit (the game studio).</li>
+  </ul>
+
+  <div class="exhibit">
+    <div class="exhibit-file">src/AutoSlayRestartMod/GameOverScreenReadyPatch.cs</div>
+    <pre>{`[HarmonyPatch(typeof(NGameOverScreen), "_Ready")]
+public static class GameOverScreenReadyPatch
+{
+    private static readonly MethodInfo? _afterOverlayOpened =
+        typeof(NGameOverScreen).GetMethod("AfterOverlayOpened",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+    [HarmonyFinalizer]
+    public static Exception? Finalizer(NGameOverScreen __instance, Exception __exception)
+    {
+        if (__exception == null) return null;
+        if (!AutoSlayer.IsActive) return __exception;
+        // ... invoke AfterOverlayOpened via reflection ...
+        return null; // suppress
+    }
+}`}</pre>
+  </div>
+
+  <p>The same pattern shows up in <code>NRunSummary._Ready</code> (the sub-scene whose <code>_Ready</code> is what actually throws first), in <code>NSendFeedbackScreen._Ready</code> (MM-018: a separate beta-update breakage of the feedback screen), and in <code>NSendFeedbackButton._Ready</code>. Four Finalizer patches, all the same shape: <code>if (!AutoSlayer.IsActive) return __exception; ... return null;</code>.</p>
+
+  <p>This is the entire reason Harmony beat Cecil for runtime work. A Cecil-patched try/catch around <code>_Ready</code> would have to be re-applied on every game update (because Steam re-overwrites the DLL); a Harmony Finalizer is in <em>the mod</em>, not in the game's DLL, and survives unchanged.</p>
+
+  <h2 id="what-i-left-vanilla">What I left vanilla</h2>
+
+  <p>The AI/scoring path stays vanilla. The mod observes state and injects actions; it does not:</p>
+
+  <ul>
+    <li>Modify reward calculation in the game.</li>
+    <li>Tweak RNG or seeds beyond what <code>AutoSlayer.Start(seed)</code> already accepts.</li>
+    <li>Rewrite combat math, card effects, or relic logic.</li>
+    <li>Skip cards, force outcomes, or "cheat" in any sense.</li>
+  </ul>
+
+  <p>The agent plays the same game a human plays. Reward shaping happens in <code>src/bot/reward.py</code> (Python side), not in the mod. Curriculum staging happens in <code>src/bot/learner.py</code> and <code>src/bot/stages.py</code>, not in the mod. The mod's job is observability + actionability + lifecycle. Three jobs, no fourth.</p>
+
+  <h2 id="what-this-bought">What this bought</h2>
+
+  <ul>
+    <li><strong>A working bridge with a tight blast radius.</strong> <code>Plugin.cs</code> + four Bucket-1 patches + <code>RlBridge.cs</code> opening a TCP connection is the entire restart machinery. Every subsequent piece (state schema, action injection, distributed actors) sits on top of those few hundred lines of mod source.</li>
+    <li><strong>Game-update resilience by default.</strong> When the game updates, most patches survive untouched. The ones that break are explicit — signature mismatches surface as Harmony exceptions on assembly load, not silent stalls.</li>
+    <li><strong>A debugging surface that's still just C#.</strong> Patches log to <code>GD.Print</code> like everything else; the mod's stdout interleaves with the game's. Stack traces are real.</li>
+  </ul>
+
+  <p>The cost: <strong>Harmony patches are not a substitute for Cecil for everything.</strong> Sealed types, constructors, IL injection mid-method — Cecil reaches places Harmony can't. The project ended up with both. Harmony for the 90% case (method detours, exception suppression). Cecil-via-<code>Sts2Patcher</code> for the IL surgery cases — the no-op of <code>NSendFeedbackScreen.Open()</code> happens at the IL level <em>and</em> via Harmony Prefix; the runtime suppression is belt-and-suspenders for the IL-on-disk patch.</p>
+
+  <h2 id="principle">The principle that compounded</h2>
+
+  <div class="principle">
+    <p class="quote">Prefer the layer that fails loudly.</p>
+    <p>The right question with runtime modification isn't "what's most powerful." It's <strong>what fails most loudly when it fails.</strong> Harmony's failure mode on a game update is an exception at assembly-load with a clear method-not-found stack trace. Cecil's failure mode is a silently-overwritten DLL on a Steam update — the patch is gone, the game runs, the mod runs, and only the missing behavior surfaces the problem.</p>
+    <p>A loud failure is a debuggable failure. The defensive patches in this article (MM-018, MM-020) are themselves a Harmony-style answer to a Godot-side loud failure: an exception in <code>_Ready</code> is loud; turning it into a Finalizer-with-fallback is the cheapest way to make the loudness recoverable. That principle — prefer the layer that fails loudly — got compounded into the design of every subsequent piece of the project.</p>
+  </div>
+</Post>
+
+<style>
+  .tldr {
+    background: var(--surface-2);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 22px 26px;
+    margin: 0 0 36px;
+    font-size: 0.95rem;
+    line-height: 1.65;
+  }
+  .tldr-label {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    font-weight: 700;
+  }
+  .tldr p { margin: 0; color: var(--text-dim); }
+  .tldr strong { color: var(--text); }
+
+  .lede {
+    font-size: 1.0625rem;
+    color: var(--text-dim);
+    margin: 0 0 1.25rem;
+  }
+
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 18px 22px;
+    margin: 24px 0;
+  }
+  .callout-label {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    font-weight: 700;
+  }
+  .callout p { margin: 0; }
+  .callout p:not(:last-child) { margin-bottom: 0.75rem; }
+
+  .cascade { margin: 22px 0; }
+  .cascade-step {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    padding: 6px 0;
+  }
+  .cascade-step:nth-child(2) { margin-left: 12px; }
+  .cascade-step:nth-child(3) { margin-left: 24px; }
+  .cascade-step:nth-child(4) { margin-left: 36px; }
+  .cascade-step:nth-child(5) { margin-left: 48px; }
+  .cascade-step:nth-child(6) { margin-left: 60px; }
+  .cascade-step .num {
+    font-family: var(--mono);
+    color: var(--accent);
+    font-size: 0.8125rem;
+    min-width: 24px;
+    padding-top: 2px;
+    flex-shrink: 0;
+  }
+  .cascade-step .text {
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: var(--text-dim);
+  }
+
+  .exhibit {
+    background: var(--surface-2);
+    border-radius: 6px;
+    margin: 22px 0;
+    border-top: 1px solid var(--accent);
+    overflow: hidden;
+  }
+  .exhibit-file {
+    background: #1a1612;
+    padding: 8px 16px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+  .exhibit pre {
+    margin: 0;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.875rem;
+    line-height: 1.55;
+    color: var(--text-dim);
+    background: transparent;
+  }
+
+  .principle {
+    background: linear-gradient(135deg, var(--surface-2), var(--surface));
+    border: 1px solid var(--accent-soft);
+    border-left: 4px solid var(--accent);
+    border-radius: 6px;
+    padding: 28px 32px;
+    margin: 36px 0 0;
+  }
+  .principle .quote {
+    font-size: 1.375rem;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.4;
+    margin: 0 0 14px;
+    letter-spacing: -0.01em;
+  }
+  .principle p:not(.quote) {
+    margin: 0 0 0.875rem;
+    font-size: 1rem;
+    line-height: 1.65;
+    color: var(--text-dim);
+  }
+  .principle p:last-child { margin-bottom: 0; }
+  .principle strong { color: var(--text); }
+</style>
