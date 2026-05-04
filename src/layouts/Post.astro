@@ -13,20 +13,23 @@ interface Props {
   category?: string;
   readingTime?: string;
   headings?: Heading[];
+  stopNumber?: string;
+  stopTag?: string;
+  trailLabel?: string;
 }
 
-const { title, date, activeTab, category, readingTime, headings } = Astro.props;
+const { title, date, activeTab, category, readingTime, headings, stopNumber, stopTag, trailLabel } = Astro.props;
 const base = import.meta.env.BASE_URL;
-const backHref = activeTab === 'learned' ? `${base}learned/` : `${base}deep-dive/`;
-const backLabel = activeTab === 'learned' ? 'What I Learned' : 'Deep Dives';
-const defaultCategory = activeTab === 'learned' ? 'What I Learned' : 'Deep Dive';
-const resolvedCategory = category ?? defaultCategory;
 
-// Right-rail TOC. To populate, pass a `headings` prop from the post page:
-//   <Post headings={[{ text: 'Why two layers', id: 'why-two-layers' }, ...]}>
-// If no headings are provided, a generic fallback is rendered so the rail
-// never looks empty. The fallback is a visual placeholder only — swap it for
-// real section titles once posts have final content.
+const tabHomes: Record<string, { href: string; label: string; defaultTrail: string }> = {
+  'learned': { href: `${base}learned/`, label: 'What I Learned', defaultTrail: 'field journal entry' },
+  'deep-dive': { href: `${base}deep-dive/`, label: 'Deep Dives', defaultTrail: 'technical trail' },
+  'ai-infrastructure': { href: `${base}ai-infrastructure/`, label: 'AI Infrastructure', defaultTrail: 'field equipment' },
+};
+const tabHome = tabHomes[activeTab] ?? { href: base, label: 'Home', defaultTrail: 'stop' };
+const resolvedCategory = category ?? tabHome.label.replace(/^What I /, '');
+const resolvedTrail = trailLabel ?? tabHome.defaultTrail;
+
 const fallbackHeadings: Heading[] = [
   { text: 'Overview' },
   { text: 'Details' },
@@ -35,30 +38,197 @@ const fallbackHeadings: Heading[] = [
 const tocEntries: Heading[] = (headings && headings.length > 0) ? headings : fallbackHeadings;
 ---
 <Base title={title} activeTab={activeTab}>
-  <div class="layout">
-    <article>
-      <a class="back" href={backHref}>&larr; {backLabel}</a>
-      <h1>{title}</h1>
-      <div class="meta-row">
-        <span class="kicker">{resolvedCategory}</span>
-        <span class="meta-sep">·</span>
-        <span>{date}</span>
-        {readingTime && (
-          <>
-            <span class="meta-sep">·</span>
-            <span>{readingTime}</span>
-          </>
-        )}
+  <div class="stop-wrap">
+    <div class="signpost">
+      {stopNumber && (
+        <div class="stop-marker">
+          <div class="stop-num">{stopNumber}</div>
+          {stopTag && <div class="stop-tag">{stopTag}</div>}
+        </div>
+      )}
+      <div class="signpost-info">
+        <div class="breadcrumb"><a href={tabHome.href}>← {tabHome.label}</a> · {resolvedTrail}</div>
+        <h1>{title}</h1>
+        <div class="meta-row">
+          <span><span class="pin">●</span> {date}</span>
+          {readingTime && <span>{readingTime}</span>}
+          <span>{resolvedCategory.toLowerCase()}</span>
+        </div>
       </div>
-      <slot />
-    </article>
-    <aside class="toc">
-      <h4>On this page</h4>
-      {tocEntries.map((h, i) => (
-        <a href={h.id ? `#${h.id}` : '#'} class={i === 0 ? 'active' : ''}>{h.text}</a>
-      ))}
-    </aside>
+      <svg class="signpost-arrow" viewBox="0 0 64 64" aria-hidden="true">
+        <path d="M 8 32 Q 26 18, 44 32" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <path d="M 38 24 L 50 32 L 38 40" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+
+    <div class="layout">
+      <article class="body">
+        <div class="body-frame">
+          <slot />
+        </div>
+      </article>
+      <aside class="toc">
+        <div class="toc-title">⟢ trail markers ⟣</div>
+        <ul class="toc-list">
+          {tocEntries.map((h, i) => (
+            <li class={i === 0 ? 'active' : ''}>
+              <a href={h.id ? `#${h.id}` : '#'}>
+                <span class="marker">§{i + 1}</span>
+                <span>{h.text}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+        <div class="toc-meta">⟢ scroll the trail ⟣</div>
+      </aside>
+    </div>
   </div>
 </Base>
 
-<!-- _v5 Workshop Warm post treatment — 680 reading frame + 220px right-rail sticky TOC. 2026-04-18_ -->
+<style>
+  .stop-wrap { width: min(94%, 1500px); margin: 30px auto; padding: 0 clamp(16px, 2.5vw, 36px); }
+
+  .signpost {
+    background: var(--paper);
+    border: 6px solid var(--ink);
+    background-image: radial-gradient(ellipse at 30% 20%, rgba(168, 78, 37, 0.05), transparent 60%);
+    padding: 28px 36px;
+    margin-bottom: 24px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 24px;
+    align-items: center;
+  }
+  .stop-marker { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .stop-num {
+    display: inline-flex;
+    width: 74px; height: 74px;
+    border-radius: 50%;
+    background: var(--rust);
+    color: var(--paper);
+    font-family: var(--serif);
+    font-size: 2rem;
+    font-weight: 700;
+    align-items: center; justify-content: center;
+    border: 3px solid var(--ink);
+  }
+  .stop-tag {
+    font-size: 0.625rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--rust);
+    font-weight: 700;
+  }
+  .signpost-info { display: flex; flex-direction: column; gap: 6px; }
+  .breadcrumb {
+    font-family: var(--serif);
+    font-size: 0.6875rem;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--rust);
+    font-weight: 700;
+  }
+  .breadcrumb a { color: var(--rust); border-bottom: 1px solid currentColor; }
+  .breadcrumb a:hover { text-decoration: none; }
+  .signpost h1 {
+    font-family: var(--serif);
+    font-size: 2.25rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--ink);
+    letter-spacing: -0.005em;
+  }
+  .meta-row {
+    display: flex;
+    gap: 14px;
+    font-size: 0.75rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    font-weight: 600;
+    margin-top: 4px;
+  }
+  .meta-row .pin { color: var(--rust); }
+  .signpost-arrow { width: 64px; height: 64px; color: var(--ink-soft); }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 240px;
+    gap: 32px;
+    align-items: start;
+  }
+  .body {
+    background: var(--paper);
+    border: 6px solid var(--ink);
+    padding: 48px 60px 60px;
+    min-height: calc(100vh - 280px);
+    background-image: radial-gradient(circle, rgba(31, 44, 32, 0.04) 1px, transparent 1.2px);
+    background-size: 24px 24px;
+  }
+  .body-frame { max-width: 760px; margin: 0 auto; }
+
+  .toc {
+    background: var(--paper-2);
+    border: 1.5px solid var(--ink);
+    border-radius: 4px;
+    padding: 18px 20px;
+    position: sticky;
+    top: 80px;
+  }
+  .toc-title {
+    font-family: var(--serif);
+    font-size: 0.6875rem;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--rust);
+    font-weight: 700;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--ink-soft);
+  }
+  .toc-list { list-style: none; display: flex; flex-direction: column; }
+  .toc-list a {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 8px 0;
+    color: var(--ink);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    border-bottom: 1px dashed var(--ink-soft);
+    font-weight: 500;
+  }
+  .toc-list li:last-child a { border-bottom: none; }
+  .toc-list .marker {
+    color: var(--rust);
+    font-family: var(--serif);
+    font-weight: 700;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+    width: 22px;
+  }
+  .toc-list a:hover, .toc-list .active a { color: var(--rust); text-decoration: none; }
+  .toc-list .active { font-weight: 700; }
+  .toc-meta {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--ink-soft);
+    font-size: 0.6875rem;
+    color: var(--ink-soft);
+    text-align: center;
+    font-style: italic;
+  }
+
+  @media (max-width: 880px) {
+    .layout { grid-template-columns: 1fr; }
+    .toc { position: static; }
+    .body { padding: 28px 28px; }
+    .signpost { grid-template-columns: 1fr; text-align: center; padding: 22px 22px; }
+    .signpost-arrow { display: none; }
+    .stop-marker { justify-self: center; }
+    .signpost h1 { font-size: 1.625rem; }
+    .stop-wrap { width: 100%; padding: 0 16px; margin: 0 0 24px; }
+  }
+</style>
+
+<!-- _Trail Map post — signpost hero + topo body + sticky right-rail trail markers. 2026-05_ -->

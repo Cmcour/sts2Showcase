@@ -2,30 +2,161 @@
 import Base from '../../layouts/Base.astro';
 const base = import.meta.env.BASE_URL;
 
-const posts: { slug: string; title: string; date: string; category: string; excerpt: string }[] = [];
+type Post = {
+  slug: string;
+  title: string;
+  date: string;
+  month: string;
+  day: string;
+  year: string;
+  category: string;
+  source?: string;
+  excerpt: string;
+};
+const posts: Post[] = [];
 ---
 <Base title="What I Learned" activeTab="learned">
   <main class="frame">
-    <div class="index-head">
-      <h1>What I Learned</h1>
-      <p class="sub">Lessons from building a reinforcement learning system for a complex card game.</p>
+    <div class="park-header">
+      <div>
+        <div class="region">⟢ field journal · entries from the trail ⟣</div>
+        <h1>Lessons Learned</h1>
+      </div>
+      <svg class="emblem" viewBox="0 0 88 88" aria-hidden="true" style="color: var(--rust)">
+        <path d="M 44 6 L 78 24 L 78 54 L 44 82 L 10 54 L 10 24 Z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+        <path d="M 44 18 L 66 30 L 66 50 L 44 70 L 22 50 L 22 30 Z" stroke="currentColor" stroke-width="1.5" fill="none" opacity=".5"/>
+        <path d="M 30 42 L 40 52 L 58 32" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
     </div>
+    <p class="description">Story-driven entries from the trail. Lessons that compounded across the project — written after a Deep Dive or AI-Infrastructure article ships, drawn from what surfaced while building the thing the article describes.</p>
 
-    <ul class="post-list">
-      {posts.map(post => (
-        <li class="post-item">
-          <a href={`${base}learned/${post.slug}/`}>
-            <div class="post-kicker">{post.category}</div>
-            <div class="post-top">
-              <div class="post-title">{post.title}</div>
-              <span class="post-date">{post.date}</span>
+    {posts.length === 0 ? (
+      <div class="empty-trail">
+        <svg viewBox="0 0 42 42" aria-hidden="true"><path d="M 6 24 Q 14 8, 22 14 T 36 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="6" cy="24" r="2.5" fill="currentColor"/><circle cx="36" cy="8" r="2.5" fill="currentColor"/><circle cx="22" cy="14" r="1.5" fill="currentColor"/></svg>
+        <p>No entries yet — the field journal fills in after the technical and infrastructure trails are blazed. The first lesson lands once the first Deep Dive and AI-Infrastructure articles have shipped.</p>
+      </div>
+    ) : (
+      <div class="field-journal">
+        {posts.map(post => (
+          <a class="entry" href={`${base}learned/${post.slug}/`}>
+            <div class="date-stamp">
+              <div class="month">{post.month}</div>
+              <div class="day">{post.day}</div>
+              <div class="year">{post.year}</div>
+              <div class="seal"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M 6 10 L 9 13 L 14 7" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
             </div>
-            <p class="post-lede">{post.excerpt}</p>
+            <div class="body-content">
+              <h2>{post.title}</h2>
+              {post.source && <div class="source-row"><span>field note</span><span>·</span><span class="src">drawn from: {post.source}</span></div>}
+              <p class="excerpt">{post.excerpt}</p>
+              <span class="read-cue">read the entry</span>
+            </div>
           </a>
-        </li>
-      ))}
-    </ul>
+        ))}
+      </div>
+    )}
+
+    <p class="footer-note">⟢ entries are written when a lesson surfaces from a shipped article — not on a fixed schedule ⟣</p>
   </main>
 </Base>
 
-<!-- _v5 Workshop Warm blog index — amber kicker, bold title, dim lede, mono date right. 2026-04-18_ -->
+<style>
+  .field-journal { display: grid; grid-template-columns: 1fr; gap: 0; margin-top: 8px; }
+  .entry {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 32px;
+    padding: 32px 0;
+    border-top: 1px dashed var(--ink-soft);
+    color: inherit;
+    transition: background 0.15s;
+  }
+  .entry:first-child { border-top: none; padding-top: 0; }
+  .entry:hover { background: rgba(62, 107, 58, 0.04); text-decoration: none; }
+  .date-stamp {
+    text-align: center;
+    padding: 14px 12px;
+    background: var(--paper-2);
+    border: 2px solid var(--ink);
+    height: fit-content;
+  }
+  .date-stamp .month {
+    font-family: var(--serif);
+    font-size: 0.6875rem;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--rust);
+    font-weight: 700;
+  }
+  .date-stamp .day {
+    font-family: var(--serif);
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1;
+    margin: 4px 0;
+  }
+  .date-stamp .year {
+    font-family: var(--serif);
+    font-size: 0.75rem;
+    color: var(--ink-soft);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+  }
+  .date-stamp .seal { margin-top: 10px; color: var(--moss); }
+  .date-stamp .seal svg { width: 20px; height: 20px; }
+  .body-content h2 {
+    font-family: var(--serif);
+    font-size: 1.625rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 6px;
+    letter-spacing: -0.005em;
+    line-height: 1.2;
+  }
+  .source-row {
+    display: flex;
+    gap: 12px;
+    font-size: 0.71875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 10px;
+    font-weight: 600;
+    align-items: center;
+  }
+  .source-row .src { color: var(--moss); }
+  .excerpt { font-size: 0.9375rem; line-height: 1.65; color: var(--ink); max-width: 760px; margin-bottom: 8px; }
+  .read-cue {
+    font-style: italic;
+    font-size: 0.8125rem;
+    color: var(--rust);
+    font-weight: 600;
+  }
+  .read-cue::before { content: "⟢ "; }
+  .empty-trail {
+    margin: 48px 0 8px;
+    padding: 32px;
+    text-align: center;
+    background: var(--paper-2);
+    border: 1px dashed var(--ink-soft);
+    border-radius: 4px;
+  }
+  .empty-trail svg {
+    color: var(--ink-soft);
+    width: 42px; height: 42px;
+    margin-bottom: 14px;
+  }
+  .empty-trail p {
+    font-style: italic;
+    color: var(--ink-soft);
+    font-size: 0.90625rem;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  @media (max-width: 780px) {
+    .entry { grid-template-columns: 1fr; gap: 14px; }
+    .date-stamp { display: flex; align-items: center; gap: 14px; text-align: left; padding: 10px 14px; }
+    .date-stamp .seal { margin: 0 0 0 auto; }
+  }
+</style>

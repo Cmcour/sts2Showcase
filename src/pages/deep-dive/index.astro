@@ -8,6 +8,9 @@ type Post = {
   date: string;
   category: string;
   excerpt: string;
+  position?: string;
+  reading?: string;
+  difficulty?: number;
 };
 const posts: Post[] = [
   {
@@ -16,31 +19,145 @@ const posts: Post[] = [
     date: 'April 2026',
     category: 'Deep Dive',
     excerpt: 'Slay the Spire 2 is closed-source. The first decision wasn’t about networks or PPO — it was whether an environment could exist at all. Why Harmony as primary and Cecil as fallback, the Finalizer-pattern saga that survived a beta .tscn update, and the principle that compounded into every subsequent layer of the project.',
+    position: 'Foundation',
+    reading: '~9 min hike',
+    difficulty: 4,
   },
 ];
 ---
 <Base title="Deep Dives" activeTab="deep-dive">
   <main class="frame">
-    <div class="index-head">
-      <h1>Deep Dives</h1>
-      <p class="sub">Technical deep dives into specific components of the system.</p>
+    <div class="park-header">
+      <div>
+        <div class="region">⟢ trail guide · region · technical trails ⟣</div>
+        <h1>Deep Dives</h1>
+      </div>
+      <svg class="emblem" viewBox="0 0 80 80" aria-hidden="true">
+        <circle cx="40" cy="40" r="34" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="40" cy="40" r="28" fill="none" stroke="currentColor" stroke-width=".8" stroke-dasharray="2 3"/>
+        <path d="M 40 12 L 46 40 L 40 36 L 34 40 Z" fill="var(--rust)"/>
+        <path d="M 40 68 L 46 40 L 40 44 L 34 40 Z" fill="currentColor" opacity=".5"/>
+      </svg>
+    </div>
+    <p class="description">Technical decision documents. Each trail walks through a specific component of the system — what was built, what it does, what was decided, why each choice was the right call given the alternatives.</p>
+
+    <div class="trailheads">
+      {posts.map((post, i) => (
+        <a class="trailhead" href={`${base}deep-dive/${post.slug}/`}>
+          <div class="marker">
+            <div class="marker-num">{i + 1}</div>
+            {post.position && <div class="marker-tag">{post.position}</div>}
+          </div>
+          <div class="info">
+            <h2>{post.title}</h2>
+            <div class="info-meta">
+              <span><span class="pin">●</span> {post.date}</span>
+              {post.reading && <span>{post.reading}</span>}
+              {post.position && <span>{post.position.toLowerCase()} trail · #{i + 1}</span>}
+            </div>
+            <p class="excerpt">{post.excerpt}</p>
+          </div>
+          {post.difficulty && (
+            <div class="difficulty">
+              <div class="difficulty-label">technical depth</div>
+              <div class="pips">
+                {[1, 2, 3, 4, 5].map(n => (
+                  <span class={n > (post.difficulty ?? 0) ? 'off' : ''}>●</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </a>
+      ))}
     </div>
 
-    <ul class="post-list">
-      {posts.map(post => (
-        <li class="post-item">
-          <a href={`${base}deep-dive/${post.slug}/`}>
-            <div class="post-kicker">{post.category}</div>
-            <div class="post-top">
-              <div class="post-title">{post.title}</div>
-              <span class="post-date">{post.date}</span>
-            </div>
-            <p class="post-lede">{post.excerpt}</p>
-          </a>
-        </li>
-      ))}
-    </ul>
+    {posts.length === 0 && (
+      <div class="empty-trail">
+        <p>No trails blazed yet — the first deep-dive ships once the next article is shipped.</p>
+      </div>
+    )}
+
+    <p class="footer-note">⟢ trails are blazed in chronological order; the next one ships when the previous one is signed off ⟣</p>
   </main>
 </Base>
 
-<!-- _v5 Workshop Warm blog index — amber kicker, bold title, dim lede, mono date right. 2026-04-18_ -->
+<style>
+  .trailheads { margin-top: 8px; }
+  .trailhead {
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    gap: 24px;
+    align-items: center;
+    padding: 24px 0;
+    border-bottom: 1px dashed var(--ink-soft);
+    color: inherit;
+    transition: background 0.15s;
+  }
+  .trailhead:hover { background: rgba(168, 78, 37, 0.04); text-decoration: none; }
+  .marker { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .marker-num {
+    display: inline-flex;
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    background: var(--rust);
+    color: var(--paper);
+    font-family: var(--serif);
+    font-size: 1.5rem;
+    font-weight: 700;
+    align-items: center; justify-content: center;
+    border: 3px solid var(--ink);
+  }
+  .marker-tag {
+    font-size: 0.625rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--rust);
+    font-weight: 700;
+  }
+  .info h2 {
+    font-family: var(--serif);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 6px;
+    letter-spacing: -0.005em;
+  }
+  .info-meta {
+    display: flex;
+    gap: 14px;
+    font-size: 0.71875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .info-meta .pin { color: var(--rust); }
+  .excerpt { font-size: 0.90625rem; line-height: 1.6; color: var(--ink); max-width: 680px; }
+  .difficulty { text-align: right; }
+  .difficulty-label {
+    font-size: 0.625rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .pips { color: var(--rust); font-size: 0.875rem; letter-spacing: 0.05em; }
+  .pips .off { color: var(--ink-soft); opacity: 0.4; }
+  .empty-trail {
+    margin: 32px 0 8px;
+    padding: 28px;
+    text-align: center;
+    background: var(--paper-2);
+    border: 1px dashed var(--ink-soft);
+    border-radius: 4px;
+    color: var(--ink-soft);
+    font-style: italic;
+  }
+  @media (max-width: 880px) {
+    .trailhead { grid-template-columns: 54px 1fr; gap: 16px; }
+    .difficulty { grid-column: 1 / -1; text-align: left; padding-top: 6px; }
+    .marker-num { width: 42px; height: 42px; font-size: 1.125rem; }
+  }
+</style>

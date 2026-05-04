@@ -13,6 +13,9 @@ const base = import.meta.env.BASE_URL;
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{title} — STS2 RL Showcase</title>
   <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Source+Code+Pro:wght@400;600&display=swap" rel="stylesheet">
 </head>
 <body>
   <nav class="nav">
@@ -21,7 +24,7 @@ const base = import.meta.env.BASE_URL;
       <a href={base} class={`nav-tab ${activeTab === 'about' ? 'active' : ''}`}>About</a>
       <a href={`${base}learned/`} class={`nav-tab ${activeTab === 'learned' ? 'active' : ''}`}>What I Learned</a>
       <a href={`${base}deep-dive/`} class={`nav-tab ${activeTab === 'deep-dive' ? 'active' : ''}`}>Deep Dives</a>
-      <a href={`${base}agent-workflow/`} class={`nav-tab ${activeTab === 'agent-workflow' ? 'active' : ''}`}>Agent Workflow</a>
+      <a href={`${base}ai-infrastructure/`} class={`nav-tab ${activeTab === 'ai-infrastructure' ? 'active' : ''}`}>AI Infrastructure</a>
     </div>
   </nav>
   <slot />
@@ -32,4 +35,4 @@ const base = import.meta.env.BASE_URL;
   @import '../styles/global.css';
 </style>
 
-<!-- _v5 Workshop Warm nav treatment — 52px sticky, amber-underline active tab. 2026-04-18_ -->
+<!-- _Trail Map system — sticky cream nav, rust active-tab underline. 2026-05_ -->

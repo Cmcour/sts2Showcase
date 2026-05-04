@@ -22,6 +22,22 @@ node_modules/
 Thumbs.db
 Desktop.ini
 
+# editor temp / swap files
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+.history/
+
+# AI assistant working files (any tool, any name)
+.aider*
+.cursor/
+.copilot/
+
+# broader local-config catch-all
+*.local
+
 # jetbrains setting folder
 .idea/
 
@@ -37,6 +53,14 @@ drafts/
 
 # lessons source material — internal first drafts; polished versions ship in src/pages/learned/
 lessons/
+
+# generated PDFs / paper renders (these get baked from drafts/, never live in the source tree)
+*.pdf
+
+# OS clutter / dev junk that occasionally appears in repo roots
+*.DS_Store
+.cache/
+coverage/
 
 # secrets safety net — never ship even if an errant file appears
 *.pem
