@@ -67,20 +67,22 @@ const tocEntries: Heading[] = (headings && headings.length > 0) ? headings : fal
           <slot />
         </div>
       </article>
-      <aside class="toc">
-        <div class="toc-title">⟢ trail markers ⟣</div>
-        <ul class="toc-list">
-          {tocEntries.map((h, i) => (
-            <li class={i === 0 ? 'active' : ''}>
-              <a href={h.id ? `#${h.id}` : '#'}>
-                <span class="marker">§{i + 1}</span>
-                <span>{h.text}</span>
-              </a>
-            </li>
-          ))}
-        </ul>
-        <div class="toc-meta">⟢ scroll the trail ⟣</div>
-      </aside>
+      <slot name="aside">
+        <aside class="toc">
+          <div class="toc-title">⟢ trail markers ⟣</div>
+          <ul class="toc-list">
+            {tocEntries.map((h, i) => (
+              <li class={i === 0 ? 'active' : ''}>
+                <a href={h.id ? `#${h.id}` : '#'}>
+                  <span class="marker">§{i + 1}</span>
+                  <span>{h.text}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+          <div class="toc-meta">⟢ scroll the trail ⟣</div>
+        </aside>
+      </slot>
     </div>
   </div>
 </Base>

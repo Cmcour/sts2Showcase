@@ -12,7 +12,18 @@ type Post = {
   spec: string;
   detail?: string;
 };
-const posts: Post[] = [];
+const posts: Post[] = [
+  {
+    slug: 'sts2player-subagent-crew',
+    title: 'The Subagent Crew Inside sts2Player',
+    date: 'May 2026',
+    category: 'AI Infrastructure',
+    badge: 'field equipment 2',
+    reading: '~22 min hike',
+    spec: 'Nine specialists, five lanes, one orchestrator. A tour of the .claude/agents/ crew that keeps a 100+-file RL stack from cross-contaminating itself — who they are, why each one got carved out, the hard rules, and the war stories that sharpened them.',
+    detail: '9 specialists · 5 lanes · 36 hr buildout',
+  },
+];
 ---
 <Base title="AI Infrastructure" activeTab="ai-infrastructure">
   <main class="frame">
