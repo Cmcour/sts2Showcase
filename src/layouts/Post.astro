@@ -24,7 +24,7 @@ const base = import.meta.env.BASE_URL;
 const tabHomes: Record<string, { href: string; label: string; defaultTrail: string }> = {
   'learned': { href: `${base}learned/`, label: 'What I Learned', defaultTrail: 'field journal entry' },
   'deep-dive': { href: `${base}deep-dive/`, label: 'Deep Dives', defaultTrail: 'technical trail' },
-  'ai-infrastructure': { href: `${base}ai-infrastructure/`, label: 'AI Infrastructure', defaultTrail: 'field equipment' },
+  'agent-architecture': { href: `${base}agent-architecture/`, label: 'Agent Architecture', defaultTrail: 'field equipment' },
 };
 const tabHome = tabHomes[activeTab] ?? { href: base, label: 'Home', defaultTrail: 'stop' };
 const resolvedCategory = category ?? tabHome.label.replace(/^What I /, '');

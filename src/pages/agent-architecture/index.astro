@@ -17,7 +17,7 @@ const posts: Post[] = [
     slug: 'sts2player-subagent-crew',
     title: 'The Subagent Crew Inside sts2Player',
     date: 'May 2026',
-    category: 'AI Infrastructure',
+    category: 'Agent Architecture',
     badge: 'field equipment 2',
     reading: '~22 min hike',
     spec: 'Nine specialists, five lanes, one orchestrator. A tour of the .claude/agents/ crew that keeps a 100+-file RL stack from cross-contaminating itself — who they are, why each one got carved out, the hard rules, and the war stories that sharpened them.',
@@ -25,12 +25,12 @@ const posts: Post[] = [
   },
 ];
 ---
-<Base title="AI Infrastructure" activeTab="ai-infrastructure">
+<Base title="Agent Architecture" activeTab="agent-architecture">
   <main class="frame">
     <div class="park-header">
       <div>
         <div class="region">⟢ field equipment · what's in the pack ⟣</div>
-        <h1>AI Infrastructure</h1>
+        <h1>Agent Architecture</h1>
       </div>
       <svg class="emblem" viewBox="0 0 88 88" aria-hidden="true" style="color: var(--lake)">
         <path d="M 22 18 L 22 14 Q 22 10, 26 10 L 36 10 Q 40 10, 40 14 L 40 18" stroke="currentColor" stroke-width="2" fill="none"/>
@@ -42,17 +42,17 @@ const posts: Post[] = [
         <line x1="74" y1="40" x2="80" y2="44" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     </div>
-    <p class="description">The AI tooling that actually built and maintains this site. Real config, real prompts, real failures — not the marketing version. Each entry is a piece of the kit you could lift into your own setup.</p>
+    <p class="description">The agent setup that actually built and maintains this site. Real config, real prompts, real failures — not the marketing version. Each entry is a piece of the kit you could lift into your own setup.</p>
 
     {posts.length === 0 ? (
       <div class="empty-pack">
         <svg viewBox="0 0 42 42" aria-hidden="true"><circle cx="21" cy="21" r="14" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="4 3"/><circle cx="21" cy="21" r="3" fill="currentColor"/></svg>
-        <p>Pack is empty — the first piece of equipment lands once the first AI-Infrastructure article ships. The subagent-crew article is currently in draft.</p>
+        <p>Pack is empty — the first piece of equipment lands once the first Agent-Architecture article ships. The subagent-crew article is currently in draft.</p>
       </div>
     ) : (
       <div class="gear-list">
         {posts.map(post => (
-          <a class="gear-item" href={`${base}ai-infrastructure/${post.slug}/`}>
+          <a class="gear-item" href={`${base}agent-architecture/${post.slug}/`}>
             <div class="gear-icon">
               <svg viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="22" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="28" cy="28" r="3" fill="currentColor"/></svg>
             </div>
