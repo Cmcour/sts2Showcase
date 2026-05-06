@@ -1,0 +1,1686 @@
+---
+import Post from '../../layouts/Post.astro';
+
+const headings = [
+  { text: 'What a subagent is', id: 'what-is' },
+  { text: 'The roster', id: 'roster' },
+  { text: 'How they orchestrate', id: 'orchestrate' },
+  { text: 'Codex as the always-on second pair of eyes', id: 'codex' },
+  { text: 'The seams — where lanes leak', id: 'seams' },
+  { text: 'Patterns that turned out to matter', id: 'patterns' },
+  { text: "What's transferable", id: 'transferable' },
+];
+---
+
+<Post
+  title="The Subagent Crew Inside sts2Player"
+  date="May 2026"
+  activeTab="ai-infrastructure"
+  category="AI Infrastructure"
+  readingTime="~22 min hike"
+  headings={headings}
+  stopNumber="2"
+  stopTag="AI Infra"
+  trailLabel="field equipment 2 · the crew"
+>
+
+  <p class="lede">The training repo grew faster than any one Claude could keep in head. Generic Claude could read all of it. Generic Claude could not safely <em>edit</em> all of it without lane-crossing into territory it shouldn't touch — fixing a Python bug by also "improving" the bat that invoked it by also tweaking the mod that emitted the schema the bug was about. So I started carving the work into specialists.</p>
+
+  <p>Nine specialists in <code>.claude/agents/&lt;name&gt;.md</code>. They cluster into five <strong>lanes</strong> — planning, code, ops, advisory, comms — and the v5 treatment leans on that taxonomy explicitly. Spec stanzas, marginalia pills, and the floated rule-cards all carry the lane color.</p>
+
+  <p>By the time the project was three weeks old it was 100+ files spanning a Python PPO learner, a C# Harmony mod, a fleet of bat scripts driving 11 Windows laptops over SSH, and a tangle of dashboard and eval and run-state machinery on top. Nine specialists got carved out in about a day and a half in late April. Each one lives at <code>.claude/agents/&lt;name&gt;.md</code> in the <code>sts2Player</code> repo. Each one has a frontmatter block declaring <code>name</code>, <code>description</code>, <code>tools</code>, and <code>model</code>, then a long prose spec defining what it owns, what it explicitly cedes, the artifacts it emits, and the hard rules whose violation stops the engagement. Nine specialists plus one top-level orchestrator (Claude itself, in the conversation), with the user — me — gating every meaningful decision.</p>
+
+  <p>This is a tour of the crew. Who they are, why each one got carved out, what the hard rules are, and the war stories that sharpened them. The patterns transfer; the specifics are mine.</p>
+
+  <h2 id="what-is"><span class="num">§ 1</span>What a subagent actually is, briefly</h2>
+  <svg class="under" viewBox="0 0 90 8" aria-hidden="true"><path d="M 2 4 Q 18 1, 32 5 T 60 3 T 86 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+  <p>For readers new to Claude Code's subagent feature: a subagent is a separately-instantiated Claude with its own system prompt, its own tool whitelist, and its own scoped context window. The orchestrator (the active Claude Code session) summons a subagent with a task; the subagent executes in its own context with only the files it pulls in; it returns artifacts and a summary; the orchestrator integrates. The point isn't capacity — it's <em>isolation</em>. The subagent can't accidentally edit a file outside its declared scope because its system prompt told it not to and its task description didn't ask it to. With a careful spec, the subagent's boundary is the spec.</p>
+
+  <p>That isolation is what makes a multi-agent stack viable in a 100+-file repo. One conversation can't hold all of it; nine conversations each holding a slice can.</p>
+
+  <h2 id="roster"><span class="num">§ 2</span>The roster · grouped by lane</h2>
+  <svg class="under" viewBox="0 0 90 8" aria-hidden="true"><path d="M 2 4 Q 18 1, 32 5 T 60 3 T 86 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+  <p>Index first; then nine sub-sections in lane order — planning, code, ops, advisory, comms.</p>
+
+  <div class="index-block">
+    <div class="index-bar"><span>.claude/agents/  ·  9 specialists · 5 lanes</span><span class="approved">[stage 2b approved]</span></div>
+    <pre>file                       <span class="nick">nick</span>  role                                lane         model    triggers
+─────────────────────────────────────────────────────────────────────────────────────────────────
+blueprint-beacon.md         <span class="nick">bb</span>    the planner                         <span class="ln-planning">● planning</span>   <span class="opus">opus</span>     manual
+python-phantom.md           <span class="nick">pp</span>    residual editor                     <span class="ln-code">● code</span>       sonnet   manual + reactive(bb)
+mod-man.md                  <span class="nick">mm</span>    C# / Harmony                        <span class="ln-code">● code</span>       sonnet   manual
+worker-warden.md            <span class="nick">ww</span>    fleet guardian                      <span class="ln-ops">● ops</span>        sonnet   manual + sched + reactive
+game-guru.md                <span class="nick">gg</span>    rules-lawyer                        <span class="ln-advisory">● advisory</span>   sonnet   manual
+neural-nomad.md             <span class="nick">nn</span>    ML architect (advisory)             <span class="ln-advisory">● advisory</span>   sonnet   manual + reactive(bb)
+eval-eagle.md               <span class="nick">ee</span>    measurement                         <span class="ln-advisory">● advisory</span>   sonnet   manual + opt-in resident
+dashboard-druid.md          <span class="nick">dd</span>    visualization                       <span class="ln-comms">● comms</span>      sonnet   manual + reactive
+story-sage.md               <span class="nick">ss</span>    explainer / NotebookLM briefs       <span class="ln-comms">● comms</span>      sonnet   manual</pre>
+  </div>
+
+  {/* ── Planning lane ───────────────────────────────────── */}
+  <div class="lane-sep" data-lane="planning"><span class="rule"></span><span class="label">── planning lane (1) ──</span><span class="rule"></span></div>
+
+  <h3 id="bb"><span class="ham">#</span>blueprint-beacon · the planner</h3>
+  <div class="spec" data-lane="planning">
+    <div class="spec-bar"><span class="file">.claude/agents/blueprint-beacon.md</span><span class="right"><span class="lane-tag">planning</span><span class="model opus">opus</span></span></div>
+    <div class="spec-body"><table>
+      <tr><th>nickname</th><td><code>bb</code></td></tr>
+      <tr><th>lane</th><td>planning</td></tr>
+      <tr><th>added</th><td>2026-04-22 · first wave</td></tr>
+      <tr><th>owns</th><td><code>drafts/bb/*</code> · BB-NNN ledger · plan authorship · cross-agent routing</td></tr>
+      <tr><th>cedes</th><td>implementation (pp), C# (mm), fleet (ww), measurement (ee), advisory (nn)</td></tr>
+      <tr><th>triggers</th><td>manual</td></tr>
+      <tr><th>signature</th><td>long-route critique cycle (9 phases)</td></tr>
+    </table></div>
+  </div>
+  <div class="rule-float" data-lane="planning">
+    <div class="rf-bar"><span>hard rule · bb</span><span>load-bearing</span></div>
+    <div class="rf-body">no work happens without user approval. no exceptions. <em>approval of phase 1 does NOT roll forward to phase 2.</em></div>
+  </div>
+  <p><code>bb</code> was the first specialist. The reason was simple: I kept asking generic Claude "what should we work on next?" and getting answers that were either "improve training" (too vague) or "change <code>entropy_coef</code> to 0.005" (too narrow, no surrounding context). I wanted both layers — the <em>immediate</em> next task and the <em>milestone</em> it serves — and I wanted approval gates between every step.</p>
+
+  <p><code>bb</code> is the only agent on <code>opus</code>. Every other agent runs <code>sonnet</code>. Planning gets the bigger model.</p>
+
+  <p>The plans are layered. Every BB-NNN proposal has to address three horizons at once:</p>
+
+  <ol>
+    <li>The active 1–3 month milestone the work serves.</li>
+    <li>The phased breakdown of how to get there.</li>
+    <li>The immediate next task — concrete enough to spawn an agent against.</li>
+  </ol>
+
+  <p>Missing any layer means the plan is incomplete and gets rejected at draft. This rule started as a war story. Early <code>bb</code> plans tried to defer concrete decisions ("phase 7 will figure that out"), and "phase 7" never showed up. The hard rule was the fix: every plan layers all three horizons, every time.</p>
+
+  <h4>signature · long-route critique cycle</h4>
+  <pre class="field-block"><div class="pre-tag"><span>drafts/bb/bb-plans.md  ·  long-route ladder (9 phases)</span></div><code>{`bb-initial-draft
+    ↓
+critique-round-1   (parallel pp · mm · ee · nn — only the lanes the proposal touches)
+    ↓
+bb-revise-1        (folds critiques with FOLDED / DEFERRED / REJECTED disposition)
+    ↓
+critique-round-2   (rotating emphasis — failure modes, perf, etc.)
+    ↓
+bb-revise-2
+    ↓
+critique-round-3
+    ↓
+bb-final
+    ↓
+claude cold review (orchestrator end-to-end; flags drift; small targeted fix)
+    ↓
+OneDrive copy → user gate`}</code></pre>
+
+  <p>Three rotating critique cycles. Each cycle produces a critique doc per agent, folded into the plan with explicit disposition (FOLDED / DEFERRED / REJECTED) tracked in a matrix at the top of the plan. There's a FAST route too — four phases, one critique cycle — for single-file work that doesn't merit the full nine-phase grinder.</p>
+
+  <p>The <code>bb</code> ledger lives at <code>drafts/bb/bb-plans.md</code> and assigns monotonic <code>BB-NNN</code> ids. Every other agent's reports cite the BB-NNN they trace back to. It's the spine of the project's memory.</p>
+
+  {/* ── Code lane ──────────────────────────────────────── */}
+  <div class="lane-sep" data-lane="code"><span class="rule"></span><span class="label">── code lane (2) ──</span><span class="rule"></span></div>
+
+  <h3 id="pp"><span class="ham">#</span>python-phantom · the residual editor</h3>
+  <div class="spec" data-lane="code">
+    <div class="spec-bar"><span class="file">.claude/agents/python-phantom.md</span><span class="right"><span class="lane-tag">code</span><span class="model sonnet">sonnet</span></span></div>
+    <div class="spec-body"><table>
+      <tr><th>nickname</th><td><code>pp</code></td></tr>
+      <tr><th>lane</th><td>code</td></tr>
+      <tr><th>added</th><td>2026-04-22 · first wave</td></tr>
+      <tr><th>owns</th><td><code>src/bot/*.py</code> · <code>src/bot/run_state_*.py</code></td></tr>
+      <tr><th>cedes</th><td>C# + <code>launch_loop.bat</code> → mm; planning → bb; fleet bats → ww</td></tr>
+      <tr><th>triggers</th><td>manual + reactive to bb (on user-approved phase)</td></tr>
+      <tr><th>signature</th><td>3-tier verification ladder · min / med / heavy</td></tr>
+    </table></div>
+  </div>
+  <div class="rule-float" data-lane="code">
+    <div class="rf-bar"><span>hard rule · pp</span><span>verification</span></div>
+    <div class="rf-body">every diff carries a verification block. <em>warm-start success messages reflect actual copy, not "we got past the function."</em></div>
+  </div>
+  <p>After <code>bb</code>, <code>pp</code>. The reason was the lane-crossing problem. Generic Claude would fix a Python bug by also editing a bat file by also tweaking the mod, and I'd have to read three lanes of diff to understand a single change. <code>pp</code> solves this with a "residual + adaptive" framing — <code>pp</code> owns whatever isn't explicitly someone else's, and as new specialists arrive, <code>pp</code> politely cedes territory.</p>
+
+  <p>Today <code>pp</code> owns:</p>
+
+  <ul>
+    <li><code>src/bot/*.py</code> — the whole Python side. PPO learner, model, rewards, stages, env, protocol, encoders, the training-side <code>actor_proxy</code>, episode logger, dashboard backend, plot, stub.</li>
+    <li><code>src/bot/run_state_*.py</code> — the suite of pretrain/eval/data/model/config/live modules.</li>
+    <li><code>worker_config.toml.example</code> (when a shape change is Python-driven; the per-machine <code>worker_config.toml</code> is gitignored and stays in user territory).</li>
+    <li>One-off utility scripts that aren't fleet orchestration.</li>
+  </ul>
+
+  <p><code>pp</code> cedes: C# mod and <code>launch_loop.bat</code> to <code>mm</code>, planning to <code>bb</code>, fleet bats to <code>ww</code>, the <code>sts2Stats</code> sibling repo to nobody (read-only).</p>
+
+  <p>The signature feature is a three-tier verification ladder. Every <code>pp</code> edit comes back with the verification result baked into the diff summary:</p>
+
+  <ul>
+    <li><strong>Minimum:</strong> <code>python -m py_compile &lt;files&gt;</code> — always.</li>
+    <li><strong>Medium:</strong> import sanity (<code>python -c "import src.bot.&lt;module&gt;"</code>) for cross-module or public-API edits.</li>
+    <li><strong>Heavy:</strong> an actual smoke run for hot-path edits — model, PPO loss, checkpoint loading, protocol. The smoke script gets authored under <code>drafts/pp/current/&lt;date&gt;-&lt;slug&gt;/</code> if no existing one fits.</li>
+  </ul>
+
+  <h4>signature · verification baked into every diff</h4>
+  <pre class="field-block"><div class="pre-tag"><span>drafts/pp/current/2026-05-02-shop-warmstart/test.py · output</span></div><code>{`[verification] tier: heavy
+[verification] python -m py_compile src/bot/run_state_shop_live.py: PASS
+[verification] python -c "import src.bot.run_state_shop_live": PASS
+[verification] smoke: drafts/pp/current/2026-05-02-shop-warmstart/test.py: PASS
+  - load picker ckpt_147900.pt -> ShopModel
+  - 4 embeddings copied (card/enemy/relic/power)
+  - all 4 frozen (requires_grad=False)
+  - bit-for-bit identical to picker source`}</code></pre>
+
+  <p>That last line is doing a lot of work. The bug it covers — the "warm-start complete" lie — is the kind of thing this whole crew structure is built to catch. The ShopModel learner was logging <code>Warm-start complete. card=521 enemy=69 relic=128 power=64 frozen.</code> while <em>also</em> logging four <code>WARNING: card_emb.weight not in picker checkpoint — using random init</code> lines for those exact tables. The "complete" message fired even when nothing was actually copied. The picker checkpoint nests its state_dict under a top-level <code>'policy'</code> key; the loader was looking at the top level and missing every embedding. <code>pp</code>'s fix was a 12-line defensive unwrap. The verification proved the embeddings were now bit-for-bit identical to the picker source, frozen, and matched.</p>
+
+  <p>The lesson got promoted: warm-start success messages should reflect actual copy, not "we got past the function."</p>
+
+  <h3 id="mm"><span class="ham">#</span>mod-man · C# / Harmony</h3>
+  <div class="spec" data-lane="code">
+    <div class="spec-bar"><span class="file">.claude/agents/mod-man.md</span><span class="right"><span class="lane-tag">code</span><span class="model sonnet">sonnet</span></span></div>
+    <div class="spec-body"><table>
+      <tr><th>nickname</th><td><code>mm</code></td></tr>
+      <tr><th>lane</th><td>code</td></tr>
+      <tr><th>added</th><td>2026-04-22 · first wave</td></tr>
+      <tr><th>owns</th><td><code>src/AutoSlayRestartMod/</code> · <code>scripts/worker/launch_loop.bat</code></td></tr>
+      <tr><th>cedes</th><td>Python sidecars → pp; fleet bats → ww; planning → bb</td></tr>
+      <tr><th>triggers</th><td>manual</td></tr>
+      <tr><th>signature</th><td>5 hard rules (bat <code>.bak</code>, schema flag, save-compat, game-update stop, auto-rollback)</td></tr>
+    </table></div>
+  </div>
+  <div class="rule-float" data-lane="code">
+    <div class="rf-bar"><span>hard rule · mm</span><span>game-update stop</span></div>
+    <div class="rf-body">if Steam ships an update and <code>Sts2Patcher.exe</code> fails or a <code>[HarmonyPatch]</code> target type doesn't resolve — <em>stop.</em> no improvising.</div>
+  </div>
+  <p><code>mm</code> came in with the first wave because the C# mod work is foreign territory for general Claude. Harmony attribute syntax, Mono.Cecil internals, the <code>[ModInitializer]</code> lifecycle, the patcher's IL emissions — all of it needs specialist context. <code>mm</code>'s spec embeds primary-surface reference (per-file documentation of every <code>[HarmonyPatch]</code> class) so the agent has anchored context every invocation, not just when the conversation happens to have read those files recently.</p>
+
+  <p><code>mm</code> owns:</p>
+
+  <ol>
+    <li><code>src/AutoSlayRestartMod/</code> — the whole Harmony mod, every <code>[HarmonyPatch]</code> class, the canonical mod↔proxy JSON schema.</li>
+    <li><code>scripts/worker/launch_loop.bat</code> — the worker-side build+inject loop that does <code>dotnet build</code> → xcopy DLL into the game's mods dir → run <code>Sts2Patcher.exe</code> against <code>sts2.dll</code> → infinite-loop <code>SlayTheSpire2.exe --autoslay --seed &lt;hex&gt;</code>.</li>
+  </ol>
+
+  <p>The hard rules stack up because the C# side has the most ways to silently break the rest of the stack:</p>
+
+  <ol>
+    <li><strong>Bat backup.</strong> Any edit to <code>launch_loop.bat</code> gets a <code>.bak</code> copy alongside <em>before</em> the first edit lands.</li>
+    <li><strong>Schema changes called out.</strong> Any edit changing the JSON shape the mod sends to <code>actor_proxy</code> must explicitly flag training-side paired work. Bump <code>RunStateSerializer.RunStateSchemaVersion</code> in the same change.</li>
+    <li><strong>Save-compat.</strong> Existing PyTorch checkpoints must still load through the partial-load fallback. <code>data/stage.json</code> must remain backward-readable by older mod builds.</li>
+    <li><strong>Game-update stop.</strong> If Steam ships an update and <code>Sts2Patcher.exe</code> fails or a <code>[HarmonyPatch]</code> target type doesn't resolve — <strong>stop</strong>. No improvising. Write up what broke and hand back.</li>
+    <li><strong>Auto-rollback.</strong> If I report a mod-side regression traced to <code>mm</code>'s edit, <code>mm</code> restores from <code>.bak</code> (bats) or <code>git checkout -- &lt;file&gt;</code> (C#) automatically and logs the rollback under the same MM-NNN with a <code>Rolled back</code> line.</li>
+  </ol>
+
+  <h4>war story · the 5-iteration shop wire-up (BB-035)</h4>
+  <table class="iter-table">
+    <thead><tr><th>id</th><th>change</th><th>status</th></tr></thead>
+    <tbody>
+      <tr><td>MM-067</td><td><code>Task.Run</code> fire-and-forget</td><td class="fail">✗ raced w/ teardown</td></tr>
+      <tr><td>MM-068</td><td>sync <code>.GetAwaiter().GetResult()</code></td><td class="fail">✗ still stalled</td></tr>
+      <tr><td>MM-069</td><td>raw <code>NetworkStream</code> + <code>FlushAsync</code> + <code>ConfigureAwait(false)</code></td><td class="ok">✓ flushed</td></tr>
+      <tr><td>MM-070</td><td>file-based <code>data/eor_diag.log</code> diagnostic</td><td class="ok">✓ proved call</td></tr>
+      <tr><td>MM-071</td><td><em>(in pp)</em> add <code>schema_version</code> to fanout payload</td><td class="ok">✓ ROOT</td></tr>
+    </tbody>
+  </table>
+  <p>The signature war story is the 5-iteration shop wire-up during BB-035. The mod's <code>Phase3Bridge.SendEndOfRun</code> had to also notify <code>picker_sidecar:9996</code> with an end-of-run envelope so the shop_sidecar fanout chain triggered. Five iterations:</p>
+
+  <ul>
+    <li><strong>MM-067</strong> — <code>Task.Run</code> fire-and-forget. Never executed in production (raced with game-over teardown).</li>
+    <li><strong>MM-068</strong> — sync <code>.GetAwaiter().GetResult()</code>. Still didn't reach <code>picker_sidecar</code>.</li>
+    <li><strong>MM-069</strong> — raw <code>NetworkStream.WriteAsync</code> + <code>FlushAsync</code> + drain read, replacing <code>StreamWriter</code> (which was sending TCP FIN before bytes flushed). Codex caught a HOLD finding pre-land — <code>ConfigureAwait(false)</code> needed.</li>
+    <li><strong>MM-070</strong> — file-based diagnostic logging to <code>data/eor_diag.log</code>. Proved the method WAS being called and bytes WERE being sent.</li>
+    <li><strong>MM-071</strong> — root cause finally identified, in <code>picker_sidecar.py</code> (so <code>pp</code>'s lane via dispatch, not <code>mm</code>'s): the fanout payload to <code>shop_sidecar</code> was missing <code>schema_version</code>, and <code>shop_sidecar</code> was rejecting it silently. 1-line fix landed downstream.</li>
+  </ul>
+
+  <p><em>Five iterations on the C# side, none of which were the actual bug.</em> The bug was a missing field in a Python sidecar's outgoing payload. The reason it took five iterations is that <code>mm</code>'s contract is to fix what's in <code>mm</code>'s lane and report; without the diagnostic logging in MM-070, nobody on the team would have known to look downstream. Each iteration went through codex review before land per the standing <code>feedback_codex_review_loop</code> rule. The pattern — keep adding observability until the failure surface narrows enough to point at the right lane — is what the multi-agent setup is for. A monolithic Claude editing freely across all three lanes would have made the shop work in one round and never written down why.</p>
+
+  {/* ── Ops lane ───────────────────────────────────────── */}
+  <div class="lane-sep" data-lane="ops"><span class="rule"></span><span class="label">── ops lane (1) ──</span><span class="rule"></span></div>
+
+  <h3 id="ww"><span class="ham">#</span>worker-warden · fleet guardian</h3>
+  <div class="spec" data-lane="ops">
+    <div class="spec-bar"><span class="file">.claude/agents/worker-warden.md</span><span class="right"><span class="lane-tag">ops</span><span class="model sonnet">sonnet</span></span></div>
+    <div class="spec-body"><table>
+      <tr><th>nickname</th><td><code>ww</code></td></tr>
+      <tr><th>lane</th><td>ops</td></tr>
+      <tr><th>added</th><td>2026-04-22 · first wave</td></tr>
+      <tr><th>owns</th><td>worker health · TCP session health · fleet throughput · deployment pipeline · SSH orchestration</td></tr>
+      <tr><th>cedes</th><td>code-side bugs to pp/mm (ww only restarts; never edits)</td></tr>
+      <tr><th>triggers</th><td>manual + scheduled (<code>/loop</code>) + reactive (event-signature match)</td></tr>
+      <tr><th>signature</th><td>auto-recovery · single-worker soft only · <strong>no <code>git pull</code></strong></td></tr>
+    </table></div>
+  </div>
+  <div class="rule-float" data-lane="ops">
+    <div class="rf-bar"><span>hard rule · ww</span><span>auto-recovery scope</span></div>
+    <div class="rf-body">single-worker soft failures only. multiple workers down → STOP. learner-up-but-no-workers → STOP. fleet-wide throughput collapse → STOP. <em>no <code>git pull</code> on auto-recovery.</em></div>
+  </div>
+  <p><code>ww</code> came in when fleet-debugging conversations with generic Claude were eating hours. Every worker outage was being triaged from scratch, with no shared context about what soft-vs-hard signatures looked like, no rolling log of past incidents, and no scoped auto-restart authority. <code>ww</code>'s spec is the most operationally complex of the crew because it's the one with the closest thing to autonomous action.</p>
+
+  <p><code>ww</code> owns the fleet:</p>
+
+  <ol>
+    <li>Worker health — alive/dead, throughput, last-heartbeat age, per-worker process tree.</li>
+    <li>TCP session health — <code>actor_proxy ↔ learner</code> pickle-framed socket, the game-side <code>RlBridge</code> newline-JSON bridge, stale sockets, infinite reconnect loops.</li>
+    <li>Training throughput across the fleet.</li>
+    <li>The deployment pipeline — <code>scripts/main/deploy.bat</code> → <code>scripts/worker/run_worker.bat</code> → <code>scripts/worker/launch_loop.bat</code>.</li>
+    <li>SSH orchestration — <code>restart_workers.bat</code>, <code>deploy.bat</code>, <code>kill_all_terminals.bat</code>, <code>setup_ssh.bat</code>, <code>full_relaunch.bat</code>.</li>
+  </ol>
+
+  <p><code>ww</code> is the only agent with three trigger modes:</p>
+
+  <ol>
+    <li><strong>Manual</strong> — I summon it.</li>
+    <li><strong>Scheduled</strong> — periodic fleet sweeps via my <code>/loop</code> skill or <code>CronCreate</code>. Quiet unless something's off.</li>
+    <li><strong>Reactive</strong> — fires when an event signature matches: worker dark &gt; N min, TCP drop, throughput collapse, checkpoints not advancing.</li>
+  </ol>
+
+  <p>It's the only agent with auto-recovery authority, and the spec is paranoid about scoping that authority. <strong>Single-worker soft failures only.</strong> <code>ww</code> may auto-restart one worker without asking on these signatures:</p>
+
+  <ul>
+    <li><code>actor_proxy</code> silently stops pushing while peers are still pushing (<code>workers.json</code> shows <code>last_seen_s</code> past the learner's refresh cadence for that one worker).</li>
+    <li><code>actor_proxy ↔ learner</code> TCP drop with the proxy's manual reconnect failing.</li>
+    <li>Game process crashes mid-episode and <code>launch_loop.bat</code>'s 5s-timeout restart loop hasn't recovered.</li>
+  </ul>
+
+  <p>Auto-recovery is single-worker only. No <code>git pull</code> (preserves code state — anti-diagnostic to change code while debugging). Every auto-recovery fires a proactive notification:</p>
+
+  <h4>auto-recovery emit</h4>
+  <pre class="field-block"><div class="pre-tag"><span>ntfy.sh push · ww auto-recovery notification</span></div><code>{`ww auto-recovery: stsBot7 actor_proxy stalled (last_seen_s=620, peers fresh).
+Restarted via SSH (no git pull). Recovery confirmed within 30s of restart.
+Logged at drafts/ww/fleet-log.md.`}</code></pre>
+
+  <p>The hard-error set — stop and flag, no auto-recovery — is everything systemic:</p>
+
+  <ul>
+    <li>Multiple workers down at once.</li>
+    <li>Learner reachable but no worker reporting (likely bad config or port conflict or wire-format mismatch).</li>
+    <li>Sudden fleet-wide throughput collapse with no individual worker signature.</li>
+    <li>Checksum mismatches on deployed binaries — that smell is a Steam game update, which fires <code>mm</code>'s game-update-stop rule.</li>
+  </ul>
+
+  <p>A few war stories that sharpened the rules:</p>
+
+  <ul>
+    <li><strong>The <code>/dev/null</code> regression in <code>deploy.bat</code>.</strong> Bash-style redirections (<code>&gt;/dev/null 2&gt;&amp;1</code>) had crept into a Windows .bat file. cmd.exe interpreted <code>/dev/null</code> as a literal path <code>\dev\null</code> and failed with "The system cannot find the path specified." right after the first <code>[stsBot0] Killing processes...</code> echo. <code>ww</code> root-caused 13 occurrences, fixed all to <code>&gt;nul 2&gt;&amp;1</code>, audited the other 6 fleet bats (clean). The kind of regression that's three minutes to write into existence and an hour to track down without a fleet specialist.</li>
+    <li><strong>The UNC admin-share trap.</strong> <code>deploy.bat</code> was using <code>\\host\C$\repos\sts2Player</code> (UNC admin share) for file distribution. That requires Administrator credentials on every worker, which I didn't have configured. <code>ww</code> rewrote Phase 2 to use <code>scp</code> over SSH (same auth path as the working SSH-kill / SSH-schtasks phases). Thirty minutes of work that unblocked deployment.</li>
+    <li><strong>The double-<code>ww</code> auto-restart conflict.</strong> Two parallel <code>ww</code> scans both had auto-restart authority on the same worker. The second restart fired during the first restart's <code>taskkill</code> phase, killing the box. The memory file <code>feedback_parallel_ww_dispatch_conflict</code> codified the rule: concurrent <code>ww</code> scans must not BOTH have restart authority on the same worker.</li>
+    <li><strong>The pinned-picker-checkpoint race.</strong> <code>restart_workers.bat</code> was scp'ing "latest picker ckpt by mtime" but the picker writes new checkpoints every few minutes. Between me warm-starting ShopModel against <code>ckpt_148210.pt</code> and running <code>restart_workers.bat</code>, the latest had drifted to <code>ckpt_148245.pt</code>. Workers got a <code>picker_checkpoint.pt</code> whose hash didn't match the <code>shop_warmstart_meta.json</code> they also got. Hash gate failed. <code>ww</code> rewrote the detection to read the path from <code>shop_warmstart_meta.json</code> (pinned source) with a latest-by-mtime fallback for cold-start. Codex caught a HOLD finding on the second pass — a silent <code>catch {}</code> would have recreated the bug.</li>
+  </ul>
+
+  <p><code>ww</code> also has a strict PII rule: real worker LAN IPs and hostnames are personal. Every user-visible artifact uses <code>stsBot[N]</code> placeholders. The rule is in every agent's spec but <code>ww</code> is the one that emits a fleet log every day, so it's the agent where the rule gets exercised most.</p>
+
+  {/* ── Advisory lane ──────────────────────────────────── */}
+  <div class="lane-sep" data-lane="advisory"><span class="rule"></span><span class="label">── advisory lane (3) ──</span><span class="rule"></span></div>
+
+  <h3 id="gg"><span class="ham">#</span>game-guru · rules-lawyer</h3>
+  <div class="spec" data-lane="advisory">
+    <div class="spec-bar"><span class="file">.claude/agents/game-guru.md</span><span class="right"><span class="lane-tag">advisory</span><span class="model sonnet">sonnet</span></span></div>
+    <div class="spec-body"><table>
+      <tr><th>nickname</th><td><code>gg</code></td></tr>
+      <tr><th>lane</th><td>advisory</td></tr>
+      <tr><th>added</th><td>2026-04-22 · first wave</td></tr>
+      <tr><th>owns</th><td>pure reference. card effects · damage formulas · save-file format · beta-build differences</td></tr>
+      <tr><th>cedes</th><td>all editing. flags drift; relevant agent picks up via orchestrator</td></tr>
+      <tr><th>triggers</th><td>manual</td></tr>
+      <tr><th>signature</th><td>Drift Flag with file/line pointer; no monotonic id ledger</td></tr>
+    </table></div>
+  </div>
+  <div class="rule-float" data-lane="advisory">
+    <div class="rf-bar"><span>hard rule · gg</span><span>source priority</span></div>
+    <div class="rf-body">game files always beat web info on conflict. <em>every external claim flagged "beta-applicable" or "⚠ version unknown"</em> — STS2 is in beta and diverges from release constantly.</div>
+  </div>
+  <p><code>gg</code> was added in the first wave for a specific failure mode: agents were independently re-deriving the same game mechanics and sometimes getting them wrong. Four agents independently looking up the Bash damage formula and getting different answers was a real thing that happened.</p>
+
+  <p><code>gg</code> is pure reference. He answers questions about how <em>Slay the Spire 2</em> actually behaves — card effects, damage formulas, intent timing, status/power mechanics, save-file format, what game-state fields reflection exposes, beta-build patch differences, strategy and meta info. He doesn't edit code. He doesn't pick patch strategy. He doesn't plan.</p>
+
+  <p>Source priority is a hard rule:</p>
+
+  <ol>
+    <li><code>sts2Stats/</code> — sibling repo with extracted decompiled assets.</li>
+    <li>Live <code>sts2.dll</code> decompile via <code>ilspycmd</code>.</li>
+    <li>STS2 official patch notes.</li>
+    <li>Community wikis.</li>
+    <li>In-repo design docs.</li>
+  </ol>
+
+  <p>Game files always beat web info on conflict. And every external claim gets flagged as beta-applicable or <code>⚠ version unknown</code> because I'm on STS2 BETA, not release, and the two diverge constantly.</p>
+
+  <p>The signature output is a Drift Flag — concrete file/line pointers when current code diverges from game reality. The classic example: during BB-019 boss-win capture work, <code>gg</code> flagged that <code>KIN_FOLLOWER</code> (encounter id) ≠ <code>THE_KIN_BOSS</code> (boss id). The mod's <code>boss_id</code> capture was reading the wrong field. Drift flag pointed at <code>Phase3BossVictoryPatch.cs</code>. <code>mm</code> picked it up via the orchestrator on the next engagement.</p>
+
+  <p><code>gg</code> doesn't auto-fix anything. He flags. The flag sits in the report and the relevant agent picks it up. This decouples discovery from action and prevents two agents from independently fixing the same thing in different ways.</p>
+
+  <p>There's a deliberate departure from the rest of the crew here: <code>gg</code> has no monotonic id ledger. The other report-emitting agents have BB-NNN, EE-NNN, MM-NNN, DD-NNN patterns. <code>gg</code>'s reports are dated but unnumbered, because game facts get re-derived per question — there's no value in cross-citing "as gg established in GG-014" when the next question gets a fresh answer from the same source files anyway.</p>
+
+  <h3 id="nn"><span class="ham">#</span>neural-nomad · ML architect (advisory)</h3>
+  <div class="spec" data-lane="advisory">
+    <div class="spec-bar"><span class="file">.claude/agents/neural-nomad.md</span><span class="right"><span class="lane-tag">advisory</span><span class="model sonnet">sonnet</span></span></div>
+    <div class="spec-body"><table>
+      <tr><th>nickname</th><td><code>nn</code></td></tr>
+      <tr><th>lane</th><td>advisory</td></tr>
+      <tr><th>added</th><td>2026-04-22/23 · second wave</td></tr>
+      <tr><th>owns</th><td>pure advisory. proposes; pp implements after user-approved phase</td></tr>
+      <tr><th>cedes</th><td>all code edits. forever.</td></tr>
+      <tr><th>triggers</th><td>manual + reactive to bb</td></tr>
+      <tr><th>signature</th><td>4 hot-path rules (input shape, entropy/LR/clip, new heads, reward scale)</td></tr>
+    </table></div>
+  </div>
+  <div class="rule-float" data-lane="advisory">
+    <div class="rf-bar"><span>hard rule · nn</span><span>new-head PPO interaction</span></div>
+    <div class="rf-body">never propose adding a new head without naming PPO-loss interaction. <em>"ambiguous" is not an acceptable answer.</em></div>
+  </div>
+  <p><code>nn</code> came in shortly after <code>pp</code>. The reason was that <code>pp</code> was making subtle ML-design choices inside implementation tasks — picking head shapes, choosing init schemes, picking entropy coefs — without surfacing the design space or the trade-offs. The choices were defensible but not auditable. <code>nn</code>'s lane separates design from implementation; the design space gets explicit treatment + user approval before implementation lands.</p>
+
+  <p><code>nn</code> is pure advisory. He never edits code. He proposes; <code>pp</code> implements (after the user-approved phase).</p>
+
+  <p>The hard rules are all hot-path. Violating them silently corrupts training:</p>
+
+  <ol>
+    <li><strong>Never propose an input-vector shape change without addressing checkpoint compatibility explicitly.</strong> Includes dimensional delta, compat statement, warm-start plan or transfer plan, and a small-scale verification probe.</li>
+    <li><strong>Never bump entropy coef / LR / clip ratio without a 1-run ablation plan.</strong> Compare policy entropy + return curves + loss curves under old and new values.</li>
+    <li><strong>Never propose adding a new head without naming PPO-loss interaction.</strong> Is it on-policy? Does its log_prob mix into the importance-sampling ratio? If yes, can the learner re-evaluate it during PPO update? "Ambiguous" is not an acceptable answer.</li>
+    <li><strong>Never change reward scale without auditing downstream value-function drift.</strong> Includes current V range (empirical), expected post-change range, and val-loss monitoring plan.</li>
+  </ol>
+
+  <p>Rule 3 has a name on it. The cautionary tale is the <code>choice_proj</code> silent-corruption episode — a new head was added to the policy without explicit treatment of how its log_prob interacted with PPO's importance-sampling ratio. The head produced decisions that contributed to the rollout actor's log_prob stream, but the learner couldn't re-evaluate them during PPO update. Result: the importance-ratio was silently corrupted, training drifted invisibly for hours before anyone noticed. Rule 3 was carved out the next day.</p>
+
+  <h4>proposal shape · BB-035 cycle excerpt</h4>
+  <pre class="field-block"><div class="pre-tag"><span>drafts/nn/proposals/2026-04-26-shop-encoder.md</span></div><code>{`Encoder option A — 226 dims, slot-concatenated:
+  pros: matches picker's input layout convention; easy to reason about
+        per-slot.
+  cons: brittle to permutation of card slots in shop offerings.
+
+Encoder option B — 225 dims, mean-pooled per category:
+  pros: permutation-invariant; smaller dim → fewer params → faster forward.
+  cons: loses per-slot structure (can't condition on "the third card slot
+        specifically").
+
+Recommendation: B. Reasoning: (a) shop offerings are a SET, not a sequence,
+so permutation invariance is structurally correct; (b) the policy head's
+10-action space already encodes the slot positions, so the encoder doesn't
+need to.
+
+⚠ This recommendation leans on Vinyals et al. 2016 (Order Matters: Sequence
+to Sequence for Sets) — set-encoder literature establishes mean-pooling
+as the standard permutation-invariant choice when set order is semantically
+meaningless. The user should weigh this if the slot order in shop offerings
+turns out to carry signal we haven't anticipated.`}</code></pre>
+
+  <p>The <code>⚠</code> is a hard-rule output: any recommendation sourced from external research is flagged. I should be able to glance at a proposal and immediately see which claims lean on the literature versus which lean on repo evidence.</p>
+
+  <h3 id="ee"><span class="ham">#</span>eval-eagle · measurement</h3>
+  <div class="spec" data-lane="advisory">
+    <div class="spec-bar"><span class="file">.claude/agents/eval-eagle.md</span><span class="right"><span class="lane-tag">advisory</span><span class="model sonnet">sonnet</span></span></div>
+    <div class="spec-body"><table>
+      <tr><th>nickname</th><td><code>ee</code></td></tr>
+      <tr><th>lane</th><td>advisory</td></tr>
+      <tr><th>added</th><td>2026-04-22/23 · second wave</td></tr>
+      <tr><th>owns</th><td>checkpoint scoring · sweep leaderboards · drift flags · plateau/collapse classification</td></tr>
+      <tr><th>cedes</th><td>training code · new-metric proposals → nn · phase-transitions → bb</td></tr>
+      <tr><th>triggers</th><td>manual + opt-in resident mode (explicit user request only)</td></tr>
+      <tr><th>signature</th><td>mandatory confidence tags; all cross-agent routing through bb</td></tr>
+    </table></div>
+  </div>
+  <div class="rule-float" data-lane="advisory">
+    <div class="rf-bar"><span>hard rule · ee</span><span>confidence tag</span></div>
+    <div class="rf-body">every interpretive claim carries HIGH / MED / LOW. bare numerical readouts = HIGH-implicit. speculative = LOW. <em>no tag → report fails review.</em></div>
+  </div>
+  <p><code>ee</code> was added when I realized I was repeatedly asking generic Claude to "evaluate this checkpoint and tell me if it's good," and the answers varied wildly. Sometimes Claude would invent a metric. Sometimes anchor on the wrong axis. Sometimes silently confuse training-loss with eval-R². Carving out a measurement-only lane with mandatory confidence tags + dated reports made eval calls auditable.</p>
+
+  <p><code>ee</code> owns measurement and interpretation:</p>
+
+  <ul>
+    <li>Checkpoint scoring.</li>
+    <li>Sweep leaderboards.</li>
+    <li>Spec-vs-measurement drift flags.</li>
+    <li>Corpus audits.</li>
+    <li>Plateau / collapse / noise classification.</li>
+    <li>Early-stop recommendations (advisory only).</li>
+  </ul>
+
+  <p><code>ee</code> does not own training code (only <code>src/bot/run_state_config.py</code> threshold constants when a written BB-NNN approves), new metric proposals (that's <code>nn</code>'s lane), or phase-transition decisions (that's <code>bb</code>'s go/no-go).</p>
+
+  <p>The signature feature is mandatory confidence tags. Every interpretive claim in every report carries <strong>HIGH / MED / LOW</strong>. Bare numerical readouts are HIGH-confidence-implicit. Speculative claims are LOW. No tag = report fails review.</p>
+
+  <h4>confidence-tag policy</h4>
+  <table class="conf-policy">
+    <tr><td class="h">HIGH</td><td>bare numerical readouts; direct measurement</td></tr>
+    <tr><td class="m">MED</td><td>interpretive claims with reasonable evidence</td></tr>
+    <tr><td class="l">LOW</td><td>speculative claims; small-sample inferences</td></tr>
+  </table>
+
+  <p><code>ee</code> has two trigger modes:</p>
+
+  <ul>
+    <li><strong>Fire-and-return</strong> (default) — invoked with a scoped task, runs the eval, writes the report, exits.</li>
+    <li><strong>Resident</strong> (opt-in only on explicit user request) — stays alive polling <code>src/bot/run_state_checkpoints/</code> for new checkpoints during long-running sweeps.</li>
+  </ul>
+
+  <p>Resident mode is explicit-opt-in only because of an early misfire: <code>ee</code> entered resident mode based on an inferred "looks like a long sweep" signal and sat polling for hours. The hard rule was carved the next day.</p>
+
+  <p>The other rule that shapes <code>ee</code>'s operation: <strong>all cross-agent routing through <code>bb</code>.</strong> <code>ee</code> never directly pings <code>pp</code> / <code>nn</code> / <code>mm</code> / <code>ww</code>. Findings name an escalation target ("→ pp: eval script can't score a <code>--no-save</code> smoke") as a <em>recommendation</em> to <code>bb</code>, not a directive. The <code>--no-save</code> story is the one that established the rule: a BB-NNN plan declared "R² ∈ [0.15, 0.30]" as a gate, but <code>ee</code> discovered the eval pipeline ran in <code>--no-save</code> mode that suppressed the checkpoint <code>run_state_eval.py</code> would have scored. Drift-flagged → <code>bb</code> → <code>pp</code> added a <code>--save-eval-checkpoint</code> flag. The drift would have masked a real failure mode silently otherwise.</p>
+
+  <p>A real EE ledger entry:</p>
+
+  <pre class="field-block"><div class="pre-tag"><span>drafts/ee/ee-ledger.md  ·  excerpt</span></div><code>{`- **EE-024** (2026-04-30) — sweep leaderboard for arm1/arm2/arm3 after 8h training.
+  Winner: arm1 with val-R²=0.21 (within BB-009 § 8.1.c gate of [0.15, 0.30]).
+  Status: active.`}</code></pre>
+
+  {/* ── Comms lane ─────────────────────────────────────── */}
+  <div class="lane-sep" data-lane="comms"><span class="rule"></span><span class="label">── comms lane (2) ──</span><span class="rule"></span></div>
+
+  <h3 id="dd"><span class="ham">#</span>dashboard-druid · visualization</h3>
+  <div class="spec" data-lane="comms">
+    <div class="spec-bar"><span class="file">.claude/agents/dashboard-druid.md</span><span class="right"><span class="lane-tag">comms</span><span class="model sonnet">sonnet</span></span></div>
+    <div class="spec-body"><table>
+      <tr><th>nickname</th><td><code>dd</code></td></tr>
+      <tr><th>lane</th><td>comms</td></tr>
+      <tr><th>added</th><td>2026-04-23 · third wave</td></tr>
+      <tr><th>owns</th><td><code>src/bot/dashboard.py</code> · frontend assets · <code>drafts/dd/</code></td></tr>
+      <tr><th>cedes</th><td>all training/mod/fleet/eval code (read-only)</td></tr>
+      <tr><th>triggers</th><td>manual + reactive to bb + reactive to peer</td></tr>
+      <tr><th>signature</th><td>auto-delegation via metric request (WHAT, never HOW)</td></tr>
+    </table></div>
+  </div>
+  <div class="footnote">this dd is the dashboard druid in the sts2Player crew, not the deputy-design agent in this site's pipeline. converging nicknames; nothing else in common.</div>
+  <div class="rule-float" data-lane="comms">
+    <div class="rf-bar"><span>hard rule · dd</span><span>WHAT not HOW</span></div>
+    <div class="rf-body">metric requests describe outcome, never implementation. <em>"WHAT" survives refactors; "WHERE/HOW" breaks the moment line numbers move.</em></div>
+  </div>
+  <p><code>dd</code> came in after <code>ee</code> because I noticed dashboard tweaks were getting tangled with training code edits. Generic Claude would "improve the dashboard" by adding a new metric AND editing the training loop to emit it AND restarting the learner. The lane separation forces clean contracts: dashboard consumes metrics; producers expose them. (Aside: this <code>dd</code> is not the same <code>dd</code> writing this article's layout — same nickname, different repo, different crew. Convergent naming.)</p>
+
+  <p><code>dd</code> owns <code>src/bot/dashboard.py</code> plus future frontend assets plus <code>drafts/dd/</code>. Read-only access to all of training, mod, fleet, and eval code.</p>
+
+  <p>The signature pattern is <strong>auto-delegation via metric request</strong>. When a new dashboard view requires data the dashboard isn't yet emitting, <code>dd</code> auto-spawns the lane-owning agent (<code>pp</code> / <code>ee</code> / <code>ww</code> / <code>mm</code>) with a request that describes WHAT to expose, not HOW. The receiving agent decides implementation.</p>
+
+  <h4>signature · metric request contract</h4>
+  <div class="req-pair">
+    <div class="req good">
+      <div class="tag">✓ allowed · WHAT</div>
+      <p>"I need per-stage average HP-remaining-at-end-of-fight surfaced via the existing stats dict, called <code>stage_hp_remaining_avg</code>. Wire it through the existing telemetry path."</p>
+    </div>
+    <div class="req bad">
+      <div class="tag">✗ forbidden · HOW</div>
+      <p>"Add <code>stats['stage_hp_remaining_avg']&nbsp;=&nbsp;sum(...)/len(...)</code> at line 432 of <code>learner.py</code>."</p>
+    </div>
+  </div>
+
+  <p>The metric-request pattern turned out to be the cleanest cross-agent contract in the whole crew. "WHAT" + producer-decides-HOW survives refactors; "WHERE" + producer-just-types-it-in breaks the moment line numbers move or <code>learner.py</code> gets reorganized. The producer knows its own code; the consumer doesn't need to.</p>
+
+  <p>War stories that shaped <code>dd</code>:</p>
+
+  <ul>
+    <li><strong>The "30–60% healthy band" gaffe.</strong> <code>dd</code> hardcoded a <code>leave_shop</code> healthy band of 30–60% based on a generic prior. My actual play data showed 93.6% of shop visits result in a purchase — true healthy band is 5–15%. Per the <code>feedback_personal_runs_baseline</code> memory, all decision-surface baselines now derive from my 529 personal <code>.run</code> files in <code>sts2Stats/uploads/runs/</code>, never from theory. The rule generalizes: when a decision-surface baseline is needed, the data is in the repo, not in the literature.</li>
+    <li><strong>The Worker Status duplicate-rows bug.</strong> Workers showed up twice on the dashboard — once by IP, once by a connection-identity hash. <code>dd</code>'s DD-028 added a dedupe step keyed on human-readable <code>worker_name</code>, with a "stale (1 conn)" sentinel row for unmapped hashes. Pure render-side fix. <code>dd</code> did not edit the producer code that was emitting both rows.</li>
+    <li><strong>The flat-scalar Chart.js bug.</strong> <code>dd</code>'s <code>_shopUpdateChart</code> helper had a condition that treated flat scalar arrays <code>[0.034, 0.037, ...]</code> as multi-series and silently rendered nothing. Affected 4 Shop charts simultaneously. Fix: tighter type-check (<code>Array.isArray(datasets) &amp;&amp; Array.isArray(datasets[0])</code>).</li>
+  </ul>
+
+  <p><code>dd</code>'s reporting is hybrid. Substantive changes get dated <code>DD-NNN</code> reports at <code>drafts/dd/current/DD-NNN-&lt;slug&gt;.md</code>. Small inline tweaks get a single-line dated bullet in <code>drafts/dd/dd-changelog.md</code>. Both formats coexist; the reporting tier matches the change.</p>
+
+  <h3 id="ss"><span class="ham">#</span>story-sage · explainer</h3>
+  <div class="spec" data-lane="comms">
+    <div class="spec-bar"><span class="file">.claude/agents/story-sage.md</span><span class="right"><span class="lane-tag">comms</span><span class="model sonnet">sonnet</span></span></div>
+    <div class="spec-body"><table>
+      <tr><th>nickname</th><td><code>ss</code></td></tr>
+      <tr><th>lane</th><td>comms</td></tr>
+      <tr><th>added</th><td>2026-04-23 · third wave</td></tr>
+      <tr><th>owns</th><td><code>SS-NNN</code> markdown briefs · OneDrive PDFs · NotebookLM customization prompt</td></tr>
+      <tr><th>cedes</th><td>everything except documentation</td></tr>
+      <tr><th>triggers</th><td>manual</td></tr>
+      <tr><th>signature</th><td>11-section briefs · 5K–20K words · coverage &gt; brevity</td></tr>
+    </table></div>
+  </div>
+  <div class="rule-float" data-lane="comms">
+    <div class="rf-bar"><span>hard rule · ss</span><span>language stack call-out</span></div>
+    <div class="rf-body">every brief covers language, packages, versions, and <em>why those specific choices</em> — sourced from the actual repo, never hand-waved.</div>
+  </div>
+  <p><code>ss</code> came in for a different reason than the others. I was vibecoding a serious distributed-RL stack and realized I didn't deeply understand the libraries I was using — what Harmony actually does to a managed assembly, why GAE-λ matters, how PyTorch's <code>Categorical</code> distribution computes log-probs. I started using NotebookLM (Google's audio-overview tool) for daily commute listening, but the audio quality depended heavily on the input brief quality. <code>ss</code> was built specifically to produce briefs rich enough that NotebookLM's audio is genuinely useful — not surface-level "here's what PPO does" but "here's why PPO clips the importance ratio, what happens if the ratio is corrupt, and which line in <code>learner.py:124</code> enforces it."</p>
+
+  <p><code>ss</code> produces four artifacts per invocation:</p>
+
+  <ol>
+    <li><strong><code>drafts/ss/current/SS-NNN-&lt;slug&gt;.md</code></strong> — the markdown brief (canonical).</li>
+    <li><strong><code>OneDrive/sts2Player-briefs/SS-NNN-&lt;slug&gt;.pdf</code></strong> — PDF rendering via Node.js <code>md-to-pdf</code> (Puppeteer). OneDrive auto-syncs to all my devices, so I can upload to NotebookLM from anywhere.</li>
+    <li><strong><code>OneDrive/sts2Player-briefs/notebooklm_prompt.txt</code></strong> — the always-current customization prompt, overwritten every invocation. Single path so I always know where the latest is.</li>
+    <li><strong><code>drafts/ss/log/SS-NNN-&lt;slug&gt;.txt</code></strong> — per-invocation archive of the prompt. Never overwritten — historical record.</li>
+  </ol>
+
+  <p>Plus the <code>drafts/ss/ss-briefs.md</code> ledger.</p>
+
+  <p>Every brief covers eleven sections in order: Title, Framing, Glossary, Theory, Design Space, What This Project Chose, Code Walkthrough, Trade-offs, References, Takeaways, What We Skipped. Length targets are 5K–7K (short), 8K–12K (medium), 12K–20K (long). Coverage &gt; brevity. Every external claim sourced; every code claim grep-verifiable.</p>
+
+  <h4>customization prompt (overwritten every invocation)</h4>
+  <pre class="field-block"><div class="pre-tag"><span>OneDrive/sts2Player-briefs/notebooklm_prompt.txt  ·  current</span></div><code>{`You're producing an Audio Overview podcast for a developer who vibecoded a
+distributed reinforcement-learning system to play Slay the Spire 2. The PDF
+walks through the PPO Learner Loop. Cover the eleven sections in order, but
+emphasize: (1) the importance-ratio clip and why it exists, (2) the GAE-λ
+trade-off, (3) the value-head silent-corruption story (BB-009). Skip the
+multi-host TCP framing — that's a separate brief. Tone: conversational,
+analogy-rich. Listener has Python and some ML background but hasn't built
+PPO from scratch.`}</code></pre>
+
+  <p>Two rules came out of war stories:</p>
+
+  <ul>
+    <li><strong>The "uses Python" hand-wave.</strong> An early brief glossed the dependency stack with one line. I pushed back. Memory feedback added: every SS brief covers the language, packages, versions, and <em>why those specific choices</em> explicitly, sourced from the actual repo (<code>pyproject.toml</code> / <code>csproj</code> / <code>requirements.txt</code>).</li>
+    <li><strong>The repeated-basics problem.</strong> Later briefs were re-explaining "what's a tensor" every time. Prior-pod-awareness rule: read the SS ledger first, skim covered topics, explain basics from scratch only for new ones.</li>
+  </ul>
+
+  <p><code>ss</code> has no peer dependencies. Pure documentation lane. Reads everywhere; writes only to <code>drafts/ss/</code> and the OneDrive briefs directory.</p>
+
+  <h2 id="orchestrate"><span class="num">§ 3</span>How they orchestrate</h2>
+  <svg class="under" viewBox="0 0 90 8" aria-hidden="true"><path d="M 2 4 Q 18 1, 32 5 T 60 3 T 86 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+  <p>Nine specialists. The shape they make together is <strong>loosely-coupled peers + one central planner</strong>. <code>bb</code> is the coordination point; the other eight are peers grouped by lane. The hand-off matrix below shows where the lanes touch.</p>
+
+  <ul>
+    <li><strong>Blueprint Beacon (<code>bb</code>)</strong> is the coordination point. Plans flow through <code>bb</code>. Cross-agent work routes through <code>bb</code>. The user-approval gate lives in <code>bb</code>. But <code>bb</code> has no authority over the other agents — it can only spawn them once I've approved a specific phase.</li>
+    <li><strong>The other eight are peers.</strong> They can pull information from each other at decision points, they can route hand-offs through <code>bb</code>, but no agent commands another. Each owns its own lane and emits artifacts other agents consume.</li>
+  </ul>
+
+  <p>There is no canonical pipeline file. The crew coordinates ad-hoc based on the lanes their specs define and the BB-NNN plans <code>bb</code> threads through. The closest thing to a pipeline is the LONG-route critique cycle that <code>bb</code>'s spec encodes — and even that is a pattern, not a hardcoded flow.</p>
+
+  <div class="orch-panel">
+    <svg viewBox="0 0 720 360" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto" aria-hidden="true">
+      <circle cx="360" cy="60" r="38" fill="#a84e25" stroke="#1f2c20" stroke-width="2.5"/>
+      <text x="360" y="58" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="14" font-weight="700" fill="#f3ecd6">bb</text>
+      <text x="360" y="76" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" fill="#f3ecd6">opus</text>
+      <text x="360" y="22" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" font-weight="700" fill="#a84e25" letter-spacing="2">USER GATES HERE</text>
+
+      <g font-family="Source Code Pro,monospace" font-size="13" font-weight="700" fill="#1f2c20">
+        <rect x="44"  y="180" width="76" height="40" fill="#e8dfc1" stroke="#1f2c20" stroke-width="1.5" rx="3"/>
+        <rect x="44" y="180" width="76" height="4" fill="#1f2c20"/>
+        <text x="82" y="207" text-anchor="middle">pp</text>
+        <rect x="200" y="180" width="76" height="40" fill="#e8dfc1" stroke="#1f2c20" stroke-width="1.5" rx="3"/>
+        <rect x="200" y="180" width="76" height="4" fill="#1f2c20"/>
+        <text x="238" y="207" text-anchor="middle">mm</text>
+
+        <rect x="356" y="180" width="76" height="40" fill="#e8dfc1" stroke="#1f2c20" stroke-width="1.5" rx="3"/>
+        <rect x="356" y="180" width="76" height="4" fill="#3a728a"/>
+        <text x="394" y="207" text-anchor="middle">ww</text>
+
+        <rect x="512" y="180" width="76" height="40" fill="#e8dfc1" stroke="#1f2c20" stroke-width="1.5" rx="3"/>
+        <rect x="512" y="180" width="76" height="4" fill="#3e6b3a"/>
+        <text x="550" y="207" text-anchor="middle">gg</text>
+
+        <rect x="44"  y="280" width="76" height="40" fill="#e8dfc1" stroke="#1f2c20" stroke-width="1.5" rx="3"/>
+        <rect x="44" y="280" width="76" height="4" fill="#3e6b3a"/>
+        <text x="82" y="307" text-anchor="middle">nn</text>
+        <rect x="200" y="280" width="76" height="40" fill="#e8dfc1" stroke="#1f2c20" stroke-width="1.5" rx="3"/>
+        <rect x="200" y="280" width="76" height="4" fill="#3e6b3a"/>
+        <text x="238" y="307" text-anchor="middle">ee</text>
+
+        <rect x="356" y="280" width="76" height="40" fill="#e8dfc1" stroke="#1f2c20" stroke-width="1.5" rx="3"/>
+        <rect x="356" y="280" width="76" height="4" fill="#cd9528"/>
+        <text x="394" y="307" text-anchor="middle">dd</text>
+        <rect x="512" y="280" width="76" height="40" fill="#e8dfc1" stroke="#1f2c20" stroke-width="1.5" rx="3"/>
+        <rect x="512" y="280" width="76" height="4" fill="#cd9528"/>
+        <text x="550" y="307" text-anchor="middle">ss</text>
+      </g>
+
+      <g stroke="#a84e25" stroke-width="1.4" stroke-dasharray="5 4" fill="none">
+        <path d="M 350 95 L 90 178"/><path d="M 354 95 L 234 178"/><path d="M 360 98 L 390 178"/><path d="M 370 95 L 548 178"/>
+        <path d="M 348 96 L 90 278"/><path d="M 354 98 L 236 278"/><path d="M 366 98 L 388 278"/><path d="M 372 96 L 546 278"/>
+      </g>
+
+      <g stroke="#3a728a" stroke-width="1.2" stroke-dasharray="2 3" fill="none">
+        <path d="M 120 200 Q 160 240, 200 200"/>
+        <path d="M 276 200 Q 316 240, 356 200"/>
+        <path d="M 432 300 Q 472 250, 512 300"/>
+      </g>
+
+      <g font-family="Source Code Pro,monospace" font-size="9" letter-spacing="1.5" font-weight="700">
+        <text x="44" y="172" fill="#1f2c20">CODE</text>
+        <text x="356" y="172" fill="#3a728a">OPS</text>
+        <text x="512" y="172" fill="#3e6b3a">ADVISORY (1/3)</text>
+        <text x="44" y="272" fill="#3e6b3a">ADVISORY (2/3)</text>
+        <text x="356" y="272" fill="#cd9528">COMMS</text>
+      </g>
+    </svg>
+    <div class="legend">{`- - dashes      bb routes plans through peer (after user-approved phase)
+···  dots       loose peer coupling (information pull, not command)
+top stripe     lane color: `}<span style="color:#a84e25">▌</span>{` planning  `}<span style="color:#1f2c20">▌</span>{` code  `}<span style="color:#3a728a">▌</span>{` ops  `}<span style="color:#3e6b3a">▌</span>{` advisory  `}<span style="color:#cd9528">▌</span>{` comms`}</div>
+  </div>
+
+  <h4>peer hand-off matrix</h4>
+  <table class="matrix">
+    <thead><tr><th>from →</th><th>bb</th><th>pp</th><th>mm</th><th>ww</th><th>gg</th><th>nn</th><th>ee</th><th>dd</th><th>ss</th></tr></thead>
+    <tbody>
+      <tr><td>bb</td><td class="none">─</td><td class="spawn">●</td><td class="spawn">●</td><td class="spawn">●</td><td class="spawn">●</td><td class="spawn">●</td><td class="spawn">●</td><td class="spawn">●</td><td class="spawn">●</td></tr>
+      <tr><td>pp</td><td class="none">─</td><td class="none">─</td><td class="pull">◇</td><td class="pull">◇</td><td class="none">─</td><td class="none">─</td><td class="none">─</td><td class="pull">◇</td><td class="none">─</td></tr>
+      <tr><td>mm</td><td class="none">─</td><td class="pull">◇</td><td class="none">─</td><td class="none">─</td><td class="pull">◇</td><td class="none">─</td><td class="none">─</td><td class="none">─</td><td class="none">─</td></tr>
+      <tr><td>ww</td><td class="none">─</td><td class="pull">◇</td><td class="none">─</td><td class="none">─</td><td class="none">─</td><td class="none">─</td><td class="none">─</td><td class="none">─</td><td class="none">─</td></tr>
+      <tr><td>gg</td><td class="none">─</td><td class="pull">◇</td><td class="pull">◇</td><td class="none">─</td><td class="none">─</td><td class="pull">◇</td><td class="none">─</td><td class="none">─</td><td class="none">─</td></tr>
+      <tr><td>nn</td><td class="none">─</td><td class="pull">◇</td><td class="none">─</td><td class="none">─</td><td class="pull">◇</td><td class="none">─</td><td class="pull">◇</td><td class="none">─</td><td class="none">─</td></tr>
+      <tr><td>ee</td><td class="none">─</td><td class="pull">◇</td><td class="none">─</td><td class="pull">◇</td><td class="none">─</td><td class="pull">◇</td><td class="none">─</td><td class="none">─</td><td class="none">─</td></tr>
+      <tr><td>dd</td><td class="none">─</td><td class="pull">◇</td><td class="none">─</td><td class="pull">◇</td><td class="none">─</td><td class="none">─</td><td class="pull">◇</td><td class="none">─</td><td class="none">─</td></tr>
+      <tr><td>ss</td><td class="none">─</td><td class="none">─</td><td class="none">─</td><td class="none">─</td><td class="none">─</td><td class="none">─</td><td class="none">─</td><td class="none">─</td><td class="none">─</td></tr>
+    </tbody>
+  </table>
+  <p class="matrix-legend"><span style="color:var(--rust);font-weight:700">●</span> bb-routes-spawn &nbsp; <span style="color:var(--lake);font-weight:700">◇</span> peer information pull &nbsp; <span style="color:var(--ink-soft)">─</span> no documented coupling</p>
+
+  <p>The trigger taxonomy covers most of the prediction surface for what fires when:</p>
+
+  <table class="trigger-table">
+    <thead><tr><th>agent</th><th>trigger modes</th></tr></thead>
+    <tbody>
+      <tr><td><span class="nick">bb</span> blueprint beacon</td><td>manual only</td></tr>
+      <tr><td><span class="nick">pp</span> python phantom</td><td>manual + reactive(bb)</td></tr>
+      <tr><td><span class="nick">mm</span> mod man</td><td>manual only</td></tr>
+      <tr><td><span class="nick">ww</span> worker warden</td><td>manual + scheduled + reactive(event)</td></tr>
+      <tr><td><span class="nick">gg</span> game guru</td><td>manual only</td></tr>
+      <tr><td><span class="nick">nn</span> neural nomad</td><td>manual + reactive(bb)</td></tr>
+      <tr><td><span class="nick">ee</span> eval eagle</td><td>manual + opt-in resident</td></tr>
+      <tr><td><span class="nick">dd</span> dashboard druid</td><td>manual + reactive(bb) + reactive(peer)</td></tr>
+      <tr><td><span class="nick">ss</span> story sage</td><td>manual only</td></tr>
+    </tbody>
+  </table>
+
+  <p>The only <strong>scheduled</strong> agent is <code>ww</code>. The only <strong>resident-watcher</strong> mode is <code>ee</code>'s opt-in. The only <strong>reactive-on-event-signature</strong> is <code>ww</code>. Everything else is manual or reactive-to-<code>bb</code>.</p>
+
+  <p>Hand-offs happen through the file system. Every agent writes to its own <code>drafts/&lt;nickname&gt;/</code> directory:</p>
+
+  <div class="filesys">
+    <div class="pre-tag">drafts/  ·  per-agent directories</div>
+    <pre>{`drafts/bb/    — plans + ledger
+drafts/pp/    — diff summaries + smoke scripts
+drafts/mm/    — diff summaries + changelog + bat snapshots
+drafts/ww/    — fleet log + reports + bat snapshots
+drafts/dd/    — DD-NNN reports + changelog
+drafts/ee/    — EE-NNN reports + ledger
+drafts/nn/    — proposals + design notes + rolling log
+drafts/gg/    — dated Q&A reports
+drafts/ss/    — markdown briefs + log archive
+drafts/codex/ — codex sweep outputs (via the standing codex review loop)`}</pre>
+  </div>
+
+  <p>Cross-agent routing through <code>bb</code> is the load-bearing rule. <code>ee</code>'s spec puts it most strongly: "All cross-agent routing through <code>bb</code>. Never directly ping <code>pp</code>, <code>nn</code>, <code>mm</code>, <code>ww</code>, <code>gg</code>." Other agents have softer versions of the same rule. <code>bb</code> is the coordination point.</p>
+
+  <p>There's also an out-of-band surface for cross-device material: <code>OneDrive/sts2Player-briefs/</code> and <code>OneDrive/sts2Player-plans/</code>. <code>ss</code>-generated PDFs and <code>bb</code>'s <code>bb-final</code> plans land there. I pick them up on phone, iPad, laptop without depending on the WSL working tree being awake.</p>
+
+  <p>And there's <code>ntfy.sh</code> for critical notifications. Hard-stop events fire <code>curl -s -d "&lt;msg&gt;" ntfy.sh/&lt;topic&gt;</code> to push to my phone. <code>ww</code> uses this for fleet hard-stops. The autonomous overnight cycle uses it for learning regressions. Short messages, fired only on hard-stop or fix-success, never on routine acks. Pager discipline: if the phone buzzes, something is actually wrong.</p>
+
+  <h2 id="codex"><span class="num">§ 4</span>Codex as the always-on second pair of eyes</h2>
+  <svg class="under" viewBox="0 0 90 8" aria-hidden="true"><path d="M 2 4 Q 18 1, 32 5 T 60 3 T 86 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+  <p>One pattern that sits outside the nine subagents but threads through every one of them: <strong>codex review on every code change.</strong> Codex is OpenAI's CLI tool, called from within the Claude conversation via <code>cmd.exe /c "codex exec ..."</code> with output tee'd to <code>/tmp/claude-codex.log</code> for live observability via a <code>claude-codex</code> tmux session. Codex reads the change cold, from outside the conversation, and emits findings — GO / HOLD / HIGH / MED / LOW.</p>
+
+  <p>The standing rule (<code>feedback_codex_review_loop</code> in memory): every code change routes through codex. Codex must GO before the change is reported complete. If codex 401s in WSL (which happens occasionally when the auth session expires), manual review is substituted with explicit disclosure.</p>
+
+  <pre class="field-block"><div class="pre-tag"><span>codex_review_loop · flow</span></div><code>{`code change ──→ codex exec ──→ {GO}     ──→ report complete
+                       │
+                       ├──→ {HOLD}   ──→ revise + re-run
+                       │
+                       └──→ {HIGH/MED/LOW}
+                            │
+                            └──→ fold finding ──→ re-run`}</code></pre>
+
+  <p>The friction is real — extra round-trip per commit. The catch rate has paid for itself many times. Three real catches:</p>
+
+  <h4>three real catches</h4>
+  <div class="catch">
+    <div class="id">BB-035 · picker → shop fanout</div>
+    <p>The <code>picker_sidecar</code> → <code>shop_sidecar</code> fanout payload was missing <code>schema_version</code>. Codex flagged HIGH. The 1-line fix landed before the change was reported complete. (This is the same payload bug that the 5-iteration <code>mm</code> saga eventually traced to — codex caught it from the other end.)</p>
+  </div>
+  <div class="catch">
+    <div class="id"><code>deploy.bat</code> paren-escaping audit</div>
+    <p>After <code>ww</code> fixed 13 occurrences of <code>&gt;/dev/null 2&gt;&amp;1</code> to <code>&gt;nul 2&gt;&amp;1</code>, codex flagged a ladder of <code>if ... ( call ... )</code> blocks where the <code>call</code>'s output redirection inside the parens needed escaping. Caught a latent bug that would have surfaced on next deploy.</p>
+  </div>
+  <div class="catch">
+    <div class="id">MM-069 · <code>ConfigureAwait(false)</code> deadlock-risk</div>
+    <p>The raw <code>NetworkStream.WriteAsync</code> + <code>FlushAsync</code> change was on the game thread. Without <code>ConfigureAwait(false)</code>, the await would resume on the captured context — and the captured context was the synchronization context Godot was running on, which means resuming on it would have deadlocked the game on the next frame. Codex flagged HOLD before land. <code>mm</code> added <code>ConfigureAwait(false)</code> and re-ran codex. GO.</p>
+  </div>
+
+  <p>Codex finds things the in-context Claude doesn't. The reason is mechanical: codex isn't in the conversation, so it isn't anchored on the framing the conversation has accumulated. It reads the diff cold. The adversarial-second-reviewer property is the thing — the agent in the conversation has too much context; the agent outside has just enough.</p>
+
+  <h2 id="seams"><span class="num">§ 5</span>The seams — where lanes leak</h2>
+  <svg class="under" viewBox="0 0 90 8" aria-hidden="true"><path d="M 2 4 Q 18 1, 32 5 T 60 3 T 86 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+
+  <p>Lane separation works most of the time. When it leaks, it leaks at predictable seams.</p>
+
+  <div class="seam-h"><span class="lake">◇</span> seam · <span class="nicks">mm ↔ pp</span> schema changes <span class="lane-dots"><span class="ld code"></span><span class="ld code"></span></span></div>
+  <p>The C# mod emits JSON; Python decodes it. Schema changes are paired work — both sides have to land in the same engagement or the protocol-version mismatch silently corrupts every observation envelope. The rule is: any <code>mm</code> edit that changes the JSON shape must explicitly flag <code>pp</code>'s paired work in the diff summary's <code>## Downstream</code> section. Empty bullet "none" stated explicitly. Never silent. The MM-067 saga is what made this rule. The shop_sidecar fanout payload was missing <code>schema_version</code> because nobody on either side caught that the inner-payload contract had drifted.</p>
+
+  <div class="seam-h"><span class="lake">◇</span> seam · <span class="nicks">pp ↔ ww</span> script ↔ Python <span class="lane-dots"><span class="ld code"></span><span class="ld ops"></span></span></div>
+  <p><code>ww</code> owns the bats; <code>pp</code> owns the Python they invoke. When a Python script's CLI changes, the bat that invokes it has to track the change. The seam is loose because nobody currently <em>owns</em> "make sure the bat keeps invoking the Python correctly" — that responsibility is shared, which means it's nobody's. When this leaks, the symptom is a deploy that runs but the workers do something subtly wrong. Currently caught by codex more often than by either agent's spec.</p>
+
+  <div class="seam-h"><span class="lake">◇</span> seam · <span class="nicks">dd ↔ producer agents</span> metric semantics <span class="lane-dots"><span class="ld comms"></span><span class="ld code"></span><span class="ld ops"></span></span></div>
+  <p><code>dd</code>'s metric-request pattern is clean for new metrics. It's less clean for <em>changing</em> an existing metric's semantics. If <code>pp</code> changes how <code>tel_rec['stage_hp_remaining_avg']</code> is computed (say, switching from arithmetic mean to median), the dashboard panel keeps rendering — but the chart is now lying, because the panel's title still says "average." The fix is to treat metric semantics as part of the schema and require <code>pp</code> to flag <code>dd</code> when semantics change. This rule isn't in the spec yet. It's a leaked seam I haven't tightened.</p>
+
+  <div class="seam-h"><span class="lake">◇</span> seam · <span class="nicks">bb ↔ everyone</span> autonomous-mode carve-out <span class="lane-dots"><span class="ld planning"></span><span class="ld code"></span><span class="ld ops"></span><span class="ld advisory"></span><span class="ld comms"></span></span></div>
+  <p><code>bb</code>'s "no work happens without user approval" rule sometimes collides with overnight autonomous work. The <code>feedback_phase3_autonomous_mode</code> memory carved out a specific case: when I delegate Phase 3 readiness work, <code>bb</code> only surfaces "need approval" (security/risk) and "ready for phase 3 review" milestones; per-step asks are suppressed; <code>bb</code> defaults auto-approved within the phase. This unblocked overnight work without violating the per-phase-approval rule (the blanket approval IS the per-phase greenlight, scoped to one phase). It's also the most fragile rule in the crew because it depends on me remembering to bound the autonomous phase tightly. Get that boundary wrong and nine agents work all night on the wrong thing.</p>
+
+  <h2 id="patterns"><span class="num">§ 6</span>Patterns that turned out to matter more than I expected</h2>
+  <svg class="under" viewBox="0 0 90 8" aria-hidden="true"><path d="M 2 4 Q 18 1, 32 5 T 60 3 T 86 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+  <p>A handful of things I didn't anticipate going in but now treat as load-bearing:</p>
+
+  <div class="pattern-block"><span class="label">[lane.negative-space]</span><p><strong>Lane separation through hard rules — <em>especially the negative space</em>.</strong> Each agent's spec lists what it does NOT own, explicitly. <code>pp</code> cedes mod work to <code>mm</code>. <code>mm</code> cedes Python to <code>pp</code>. <code>gg</code> cedes patch strategy to <code>mm</code>. <code>nn</code> cedes implementation to <code>pp</code>. The negative space is the load-bearing concept — without it, agents drift into adjacent lanes and I lose the contract that "asking <code>gg</code> won't accidentally edit <code>pp</code>'s code."</p></div>
+
+  <div class="pattern-block"><span class="label">[approval.per-phase]</span><p><strong>Per-phase user approval as the actual veto.</strong> Sign-off-in-advance-on-a-five-phase-plan locks in five phases of decisions before I can correct course. Per-phase approval gives me a real veto at every step. It's annoying — five gates per plan instead of one — and it's the reason the project hasn't drifted into a five-phase mistake.</p></div>
+
+  <div class="pattern-block"><span class="label">[delegation.metric-request]</span><p><strong>Auto-delegation with metric requests.</strong> "I need WHAT" is a contract a peer agent can satisfy correctly. "Add this exact line at line 432" is a request that will be wrong as soon as <code>learner.py</code> gets refactored. The metric-request pattern (<code>dd</code>'s signature) generalizes: cross-agent contracts should describe outcomes, not implementations.</p></div>
+
+  <div class="pattern-block"><span class="label">[discovery.drift-flag]</span><p><strong>Drift-flagging as a first-class output.</strong> When <code>gg</code> notices <code>encode_state</code> doesn't match the game's actual state shape, he writes a Drift Flag — file path, line range, specific mismatch. He doesn't fix it. He doesn't auto-spawn a fix. The flag sits in the report and the relevant agent picks it up via the orchestrator on the next engagement. This decouples discovery from action and prevents two agents from independently fixing the same thing in different ways.</p></div>
+
+  <div class="pattern-block"><span class="label">[review.out-of-conversation]</span><p><strong>Codex outside the conversation.</strong> Already covered above. Worth restating: the value isn't that codex is smarter; it's that codex isn't in the conversation. The cold read finds things the in-conversation read can't.</p></div>
+
+  <div class="pattern-block"><span class="label">[memory.feedback-files]</span><p><strong>Memory feedback files as durable context.</strong> <code>~/.claude/projects/&lt;repo-hash&gt;/memory/MEMORY.md</code> indexes about thirty <code>feedback_*.md</code> files. Each file is one rule I codified after a real incident. Examples: "kill_all_terminals.bat is nuclear by design" (don't try to surgically preserve running instances), "Fleet-degradation diagnostic ordering" (read <code>runs.jsonl</code> content patterns FIRST, watch a headed game SECOND, infra layer LAST), "Personal STS2 runs are the good-player baseline" (anchor decision-surface baselines to my 529 <code>.run</code> files, not theory). Every memory file I add tightens the crew's behavior across all future sessions. This is how a multi-agent crew gets <em>better</em> over time — not by upgrading the model but by accumulating the project's hard-won lessons in retrievable form.</p></div>
+
+  <h2 id="transferable"><span class="num">§ 7</span>What's transferable</h2>
+  <svg class="under" viewBox="0 0 90 8" aria-hidden="true"><path d="M 2 4 Q 18 1, 32 5 T 60 3 T 86 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+  <p>For anyone building their own multi-agent setup in some other domain, the parts that aren't STS2-specific:</p>
+
+  <div class="checklist">
+    <div class="pre-tag">compose-your-own-crew · checklist</div>
+    <ul>
+      <li><strong>Carve specialists by lane, not by capability.</strong> "Agent that does Python" is a lane; "agent that's good at coding" is a capability. The first composes; the second doesn't.</li>
+      <li><strong>Make every spec list its negative space.</strong> What the agent does NOT own. Without it, lanes drift.</li>
+      <li><strong>Centralize planning, decentralize execution.</strong> One planner agent, gated by user approval, that spawns specialists once a phase is approved. The planner doesn't implement; the specialists don't plan.</li>
+      <li><strong>Cross-agent contracts should describe outcomes, not implementations.</strong> "I need X exposed as a metric called Y" composes; "edit line 432 of file Z" doesn't.</li>
+      <li><strong>Add an out-of-conversation reviewer.</strong> Codex, GPT, a separate Claude — whatever — reading the diff cold. The cold read catches things the in-context read can't.</li>
+      <li><strong>Drift-flag, don't auto-fix.</strong> Discovery and action decoupled means two agents can't independently fix the same thing differently.</li>
+      <li><strong>Memory files for compounding.</strong> Every rule that started as a real incident gets written down once and referenced forever. The crew doesn't get smarter; it gets less prone to making the same mistakes.</li>
+    </ul>
+  </div>
+
+  <p class="closer">The crew is nine specialists today. There are anticipated future additions — a test agent that would own <code>tests/</code> and CI wiring, a perf agent for profiling and benchmarks, a debug/triage agent for production-log triage and crash analysis, a docs agent for <code>docs/</code> and external write-ups. <code>pp</code>'s adaptive-scope rule says <code>pp</code>'s lane shrinks as new specialists arrive. That's the design: residual-shrinking by construction. The crew composes by accretion, and <code>pp</code> is the buffer that absorbs whatever isn't yet someone else's. None have been retired. The lanes that exist were earned by recurring failure modes, and the failure modes don't go away by retiring the agent that catches them.</p>
+
+  {/* ─────────── right-rail aside (overrides Post layout default) ─────────── */}
+  <Fragment slot="aside">
+    <aside class="rail">
+      <div class="toc">
+        <div class="toc-title">⟢ trail markers ⟣</div>
+        <ul class="toc-list">
+          <li><a href="#what-is"><span class="marker">§1</span><span>what a subagent is</span></a></li>
+          <li class="active"><a href="#roster"><span class="marker">§2</span><span>the roster</span></a></li>
+        </ul>
+        <div class="toc-lane-group">
+          <div class="lane-cap" data-lane="planning"><span class="dot"></span> planning</div>
+          <ul><li><a href="#bb"><span class="nk">[bb]</span> blueprint beacon</a></li></ul>
+        </div>
+        <div class="toc-lane-group">
+          <div class="lane-cap" data-lane="code"><span class="dot"></span> code</div>
+          <ul>
+            <li><a href="#pp"><span class="nk">[pp]</span> python phantom</a></li>
+            <li><a href="#mm"><span class="nk">[mm]</span> mod man</a></li>
+          </ul>
+        </div>
+        <div class="toc-lane-group">
+          <div class="lane-cap" data-lane="ops"><span class="dot"></span> ops</div>
+          <ul><li><a href="#ww"><span class="nk">[ww]</span> worker warden</a></li></ul>
+        </div>
+        <div class="toc-lane-group">
+          <div class="lane-cap" data-lane="advisory"><span class="dot"></span> advisory</div>
+          <ul>
+            <li><a href="#gg"><span class="nk">[gg]</span> game guru</a></li>
+            <li><a href="#nn"><span class="nk">[nn]</span> neural nomad</a></li>
+            <li><a href="#ee"><span class="nk">[ee]</span> eval eagle</a></li>
+          </ul>
+        </div>
+        <div class="toc-lane-group">
+          <div class="lane-cap" data-lane="comms"><span class="dot"></span> comms</div>
+          <ul>
+            <li><a href="#dd"><span class="nk">[dd]</span> dashboard druid</a></li>
+            <li><a href="#ss"><span class="nk">[ss]</span> story sage</a></li>
+          </ul>
+        </div>
+        <ul class="toc-list toc-tail">
+          <li><a href="#orchestrate"><span class="marker">§3</span><span>how they orchestrate</span></a></li>
+          <li><a href="#codex"><span class="marker">§4</span><span>codex</span></a></li>
+          <li><a href="#seams"><span class="marker">§5</span><span>the seams</span></a></li>
+          <li><a href="#patterns"><span class="marker">§6</span><span>patterns that mattered</span></a></li>
+          <li><a href="#transferable"><span class="marker">§7</span><span>transferables</span></a></li>
+        </ul>
+      </div>
+
+      <div class="crew-marg">
+        <div class="head">⟢ the crew · 5 lanes ⟣</div>
+        <div class="grid">
+          <a class="pill" href="#bb" data-lane="planning" data-model="opus">bb<span class="glyphs"><span class="m">◆</span><span>·</span></span></a>
+          <a class="pill" href="#pp" data-lane="code"><span>pp</span><span class="glyphs"><span class="m">◇</span><span>↻</span></span></a>
+          <a class="pill" href="#mm" data-lane="code">mm<span class="glyphs"><span class="m">◇</span><span>·</span></span></a>
+          <a class="pill" href="#ww" data-lane="ops">ww<span class="glyphs"><span class="m">◇</span><span>↻↻</span></span></a>
+          <a class="pill" href="#gg" data-lane="advisory">gg<span class="glyphs"><span class="m">◇</span><span>·</span></span></a>
+          <a class="pill" href="#nn" data-lane="advisory">nn<span class="glyphs"><span class="m">◇</span><span>↻</span></span></a>
+          <a class="pill" href="#ee" data-lane="advisory">ee<span class="glyphs"><span class="m">◇</span><span>↻</span></span></a>
+          <a class="pill" href="#dd" data-lane="comms">dd<span class="glyphs"><span class="m">◇</span><span>↻</span></span></a>
+          <a class="pill" href="#ss" data-lane="comms">ss<span class="glyphs"><span class="m">◇</span><span>·</span></span></a>
+        </div>
+        <div class="legend">◆ opus · ◇ sonnet  ·  ↻ reactive · · manual</div>
+        <div class="current">9 specialists · 1 opus · 8 sonnet</div>
+      </div>
+    </aside>
+  </Fragment>
+</Post>
+
+<style>
+  /* ── Lane-color tokens (resolve to global palette) ───────── */
+  :root {
+    --lane-planning: var(--rust);
+    --lane-code:     var(--ink);
+    --lane-ops:      var(--lake);
+    --lane-advisory: var(--moss);
+    --lane-comms:    var(--sun);
+  }
+
+  /* ── Lede + body type ────────────────────────────────────── */
+  .lede {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.3125rem;
+    line-height: 1.5;
+    color: var(--ink);
+    margin-bottom: 22px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--ink-soft);
+  }
+  /* Defensive: no dropcaps. Permanent rule per drafts/dd/style-guide.md */
+  .lede::first-letter,
+  p::first-letter { font-size: inherit; float: none; line-height: inherit; padding: 0; margin: 0; color: inherit; }
+
+  /* §-headings — serif kicker with §N rust marker */
+  :global(.body-frame) h2 {
+    font-family: var(--serif);
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 34px 0 4px;
+    letter-spacing: -0.005em;
+    line-height: 1.15;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  :global(.body-frame) h2 .num {
+    font-family: var(--serif);
+    font-size: 0.8125rem;
+    color: var(--rust);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  svg.under { display: block; color: var(--rust); width: 90px; height: 8px; margin: -2px 0 18px; }
+
+  :global(.body-frame) h3 {
+    font-family: var(--mono);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 30px 0 8px;
+    letter-spacing: 0.02em;
+    scroll-margin-top: 80px;
+    clear: both;
+  }
+  :global(.body-frame) h3 .ham { color: var(--rust); font-weight: 700; margin-right: 6px; }
+  :global(.body-frame) h4 {
+    font-family: var(--mono);
+    font-size: 0.71875rem;
+    font-weight: 700;
+    color: var(--rust);
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    margin: 14px 0 6px;
+    clear: both;
+  }
+  :global(.body-frame) p { font-size: 1rem; line-height: 1.7; color: var(--ink); margin: 0 0 14px; }
+  :global(.body-frame) ul, :global(.body-frame) ol { margin: 0 0 14px 22px; }
+  :global(.body-frame) li { margin: 0 0 6px; line-height: 1.65; }
+  :global(.body-frame) p code,
+  :global(.body-frame) li code,
+  :global(.body-frame) td code,
+  :global(.body-frame) th code {
+    font-family: var(--mono);
+    background: var(--paper-3);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 0.92em;
+    color: var(--ink);
+  }
+
+  /* ── Lane separator (between lane groups in §2) ──────────── */
+  .lane-sep { display: flex; align-items: center; gap: 10px; margin: 28px 0 6px; clear: both; }
+  .lane-sep .rule { flex: 1; height: 1.5px; background: var(--lane-color, var(--ink)); opacity: 0.6; }
+  .lane-sep .label {
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--lane-color, var(--ink));
+  }
+  .lane-sep[data-lane="planning"] { --lane-color: var(--lane-planning); }
+  .lane-sep[data-lane="code"]     { --lane-color: var(--lane-code); }
+  .lane-sep[data-lane="ops"]      { --lane-color: var(--lane-ops); }
+  .lane-sep[data-lane="advisory"] { --lane-color: var(--lane-advisory); }
+  .lane-sep[data-lane="comms"]    { --lane-color: var(--lane-comms); }
+
+  /* ── Index block ─────────────────────────────────────────── */
+  .index-block {
+    background: var(--paper-3);
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    padding: 0;
+    margin: 14px 0 20px;
+    overflow: hidden;
+  }
+  .index-bar {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 8px 14px;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .index-bar .approved { color: #9bc99c; }
+  .index-block pre {
+    background: none;
+    border: none;
+    padding: 14px 18px;
+    font-family: var(--mono);
+    font-size: 0.78125rem;
+    line-height: 1.7;
+    color: var(--ink);
+    white-space: pre;
+    overflow-x: auto;
+    margin: 0;
+  }
+  .index-block .nick { color: var(--rust); font-weight: 700; }
+  .index-block .opus { color: var(--rust); font-weight: 700; }
+  .index-block .ln-planning { color: var(--lane-planning); font-weight: 700; }
+  .index-block .ln-code     { color: var(--lane-code);     font-weight: 700; }
+  .index-block .ln-ops      { color: var(--lane-ops);      font-weight: 700; }
+  .index-block .ln-advisory { color: var(--lane-advisory); font-weight: 700; }
+  .index-block .ln-comms    { color: var(--lane-comms);    font-weight: 700; }
+
+  /* ── Spec block — lane-banded ────────────────────────────── */
+  .spec {
+    background: var(--paper-3);
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    padding: 0;
+    margin: 18px 0 8px;
+    overflow: hidden;
+    border-left-width: 5px;
+    border-left-style: solid;
+    border-left-color: var(--lane-color, var(--ink));
+    position: relative;
+  }
+  .spec[data-lane="planning"] { --lane-color: var(--lane-planning); }
+  .spec[data-lane="code"]     { --lane-color: var(--lane-code); }
+  .spec[data-lane="ops"]      { --lane-color: var(--lane-ops); }
+  .spec[data-lane="advisory"] { --lane-color: var(--lane-advisory); }
+  .spec[data-lane="comms"]    { --lane-color: var(--lane-comms); }
+  .spec-bar {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 7px 14px;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .spec-bar .file { color: var(--paper); }
+  .spec-bar .file .nick { color: #e8b48f; }
+  .spec-bar .right { display: flex; gap: 6px; align-items: center; }
+  .spec-bar .lane-tag {
+    font-size: 0.5625rem;
+    letter-spacing: 0.18em;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 2px;
+    text-transform: uppercase;
+    background: var(--lane-color, var(--paper-3));
+    color: var(--paper);
+  }
+  .spec[data-lane="code"] .spec-bar .lane-tag { background: var(--paper-3); color: var(--ink); }
+  .spec-bar .model {
+    font-size: 0.625rem;
+    letter-spacing: 0.14em;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 2px;
+  }
+  .spec-bar .model.opus { background: var(--rust); color: var(--paper); }
+  .spec-bar .model.sonnet { background: var(--paper-3); color: var(--ink); }
+  .spec-body { padding: 10px 16px; }
+  .spec-body table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 0.78125rem; }
+  .spec-body th, .spec-body td { text-align: left; padding: 2px 0; vertical-align: top; border: none; }
+  .spec-body th {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 0.625rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--rust);
+    width: 110px;
+    padding-right: 14px;
+  }
+  .spec-body td { color: var(--ink); line-height: 1.55; }
+  .spec-body td code { background: none; padding: 0; font-size: 1em; }
+
+  /* ── Floated lane-colored mono callout ───────────────────── */
+  .rule-float {
+    float: right;
+    width: 260px;
+    margin: 6px 0 14px 24px;
+    background: var(--paper-3);
+    border: 1.5px solid var(--ink);
+    border-top: 4px solid var(--lane-color, var(--ink));
+    border-radius: 3px;
+    overflow: hidden;
+    clear: right;
+  }
+  .rule-float[data-lane="planning"] { --lane-color: var(--lane-planning); }
+  .rule-float[data-lane="code"]     { --lane-color: var(--lane-code); }
+  .rule-float[data-lane="ops"]      { --lane-color: var(--lane-ops); }
+  .rule-float[data-lane="advisory"] { --lane-color: var(--lane-advisory); }
+  .rule-float[data-lane="comms"]    { --lane-color: var(--lane-comms); }
+  .rule-float .rf-bar {
+    background: var(--lane-color, var(--ink));
+    color: var(--paper);
+    padding: 5px 12px;
+    font-family: var(--mono);
+    font-size: 0.59375rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 700;
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .rule-float[data-lane="code"] .rf-bar { background: var(--ink); color: var(--paper); }
+  .rule-float .rf-body {
+    padding: 10px 14px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    line-height: 1.55;
+    color: var(--ink);
+  }
+  .rule-float .rf-body em { font-style: italic; }
+  .rule-float .rf-body code { background: none; padding: 0; font-size: 1em; }
+
+  /* ── Field code blocks ───────────────────────────────────── */
+  pre.field-block {
+    background: var(--paper-3);
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    padding: 0;
+    margin: 12px 0;
+    overflow: hidden;
+    clear: both;
+    font-family: var(--mono);
+  }
+  pre.field-block .pre-tag {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 6px 14px;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  pre.field-block code {
+    display: block;
+    background: none;
+    padding: 14px 18px;
+    font-size: 0.78125rem;
+    line-height: 1.55;
+    color: var(--ink);
+    white-space: pre;
+    overflow-x: auto;
+    font-family: var(--mono);
+  }
+
+  /* ── Iter table (war-story rows) ─────────────────────────── */
+  .iter-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 0.78125rem;
+    margin: 8px 0;
+    background: var(--paper-3);
+    border: 1.5px solid var(--ink);
+    clear: both;
+  }
+  .iter-table th, .iter-table td {
+    text-align: left;
+    padding: 7px 12px;
+    border-bottom: 1px dashed var(--ink-soft);
+    vertical-align: top;
+  }
+  .iter-table th {
+    color: var(--rust);
+    font-size: 0.625rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 700;
+    border-bottom: 1.5px solid var(--ink);
+    background: var(--paper-2);
+  }
+  .iter-table td:first-child { font-weight: 700; color: var(--ink); }
+  .iter-table .ok { color: var(--moss); font-weight: 700; }
+  .iter-table .fail { color: var(--rust); font-weight: 700; }
+  .iter-table tr:last-child td { border-bottom: none; }
+
+  /* ── Confidence-tag policy ───────────────────────────────── */
+  .conf-policy {
+    width: auto;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    margin: 8px 0;
+    clear: both;
+  }
+  .conf-policy td { padding: 4px 14px 4px 0; border: none; }
+  .conf-policy .h { color: var(--moss); font-weight: 700; }
+  .conf-policy .m { color: var(--sun);  font-weight: 700; }
+  .conf-policy .l { color: var(--ink-soft); font-weight: 700; }
+
+  /* ── Metric-request pair (good / bad) ────────────────────── */
+  .req-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 10px 0;
+    clear: both;
+  }
+  .req-pair .req {
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    background: var(--paper-3);
+    overflow: hidden;
+  }
+  .req-pair .req .tag {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 5px 12px;
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.16em;
+    font-weight: 700;
+  }
+  .req-pair .req.good .tag { background: var(--moss); }
+  .req-pair .req.bad  .tag { background: var(--rust); }
+  .req-pair .req p {
+    padding: 10px 12px;
+    font-size: 0.78125rem;
+    line-height: 1.55;
+    margin: 0;
+    font-family: var(--mono);
+    color: var(--ink);
+  }
+  .req-pair .req p code { background: none; padding: 0; font-size: 1em; }
+
+  /* ── Footnote inline ─────────────────────────────────────── */
+  .footnote {
+    font-family: var(--mono);
+    font-size: 0.71875rem;
+    line-height: 1.55;
+    color: var(--ink);
+    background: var(--paper-3);
+    border: 1px solid var(--ink-soft);
+    border-radius: 2px;
+    padding: 9px 14px;
+    margin: 8px 0 10px;
+    font-style: italic;
+    clear: both;
+  }
+  .footnote::before {
+    content: "note: ";
+    color: var(--rust);
+    font-style: normal;
+    font-weight: 700;
+  }
+
+  /* ── §3 orchestration panel ──────────────────────────────── */
+  .orch-panel {
+    background: var(--paper-2);
+    border: 1.5px solid var(--ink);
+    padding: 18px 22px;
+    border-radius: 3px;
+    margin: 14px 0 18px;
+    clear: both;
+    overflow-x: auto;
+  }
+  .orch-panel svg { display: block; margin: 0 auto; max-width: 100%; }
+  .orch-panel .legend {
+    font-family: var(--mono);
+    font-size: 0.71875rem;
+    line-height: 1.7;
+    color: var(--ink);
+    margin-top: 6px;
+    padding: 10px 14px;
+    background: var(--paper-3);
+    border: 1px solid var(--ink-soft);
+    border-radius: 2px;
+    white-space: pre-wrap;
+    word-break: normal;
+  }
+
+  .trigger-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 0.78125rem;
+    margin-top: 14px;
+    margin-bottom: 14px;
+    background: var(--paper-3);
+    border: 1.5px solid var(--ink);
+  }
+  .trigger-table th, .trigger-table td {
+    text-align: left;
+    padding: 6px 12px;
+    border-bottom: 1px dashed var(--ink-soft);
+    vertical-align: top;
+  }
+  .trigger-table th {
+    color: var(--rust);
+    font-size: 0.625rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 700;
+    border-bottom: 1.5px solid var(--ink);
+    background: var(--paper-2);
+  }
+  .trigger-table td .nick { color: var(--rust); font-weight: 700; }
+  .trigger-table tr:last-child td { border-bottom: none; }
+
+  /* ── Peer hand-off matrix ────────────────────────────────── */
+  .matrix {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 0.71875rem;
+    margin: 14px 0 4px;
+    background: var(--paper-3);
+    border: 1.5px solid var(--ink);
+    clear: both;
+  }
+  .matrix th, .matrix td {
+    text-align: center;
+    padding: 5px 6px;
+    border-right: 1px dashed var(--ink-soft);
+    border-bottom: 1px dashed var(--ink-soft);
+  }
+  .matrix th {
+    color: var(--rust);
+    font-size: 0.625rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 700;
+    background: var(--paper-2);
+  }
+  .matrix td:first-child, .matrix th:first-child {
+    text-align: left;
+    color: var(--rust);
+    font-weight: 700;
+    background: var(--paper-2);
+    padding-left: 10px;
+  }
+  .matrix .spawn { color: var(--rust); font-weight: 700; }
+  .matrix .pull  { color: var(--lake); font-weight: 700; }
+  .matrix .none  { color: var(--ink-soft); }
+  .matrix tr:last-child td { border-bottom: none; }
+  .matrix td:last-child, .matrix th:last-child { border-right: none; }
+
+  .matrix-legend {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--ink-soft);
+    margin: 0 0 14px;
+  }
+
+  /* ── Filesystem listing (sun-tagged) ─────────────────────── */
+  .filesys {
+    font-family: var(--mono);
+    font-size: 0.78125rem;
+    background: var(--paper-3);
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    padding: 0;
+    margin: 12px 0 14px;
+    overflow: hidden;
+    clear: both;
+  }
+  .filesys .pre-tag {
+    background: var(--sun);
+    color: var(--ink);
+    padding: 6px 14px;
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    font-weight: 700;
+  }
+  .filesys pre {
+    padding: 12px 16px;
+    margin: 0;
+    line-height: 1.65;
+    color: var(--ink);
+    background: none;
+    border: none;
+    white-space: pre;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.78125rem;
+  }
+
+  /* ── Codex catch ─────────────────────────────────────────── */
+  .catch {
+    background: var(--paper-2);
+    border-left: 3px solid var(--rust);
+    padding: 10px 16px;
+    margin: 8px 0;
+    font-size: 0.875rem;
+  }
+  .catch .id {
+    font-family: var(--mono);
+    font-size: 0.65625rem;
+    color: var(--rust);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .catch p { font-size: 0.875rem; margin: 0; line-height: 1.55; }
+  .catch p code { font-size: 0.92em; }
+
+  /* ── Seam header ─────────────────────────────────────────── */
+  .seam-h {
+    font-family: var(--mono);
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 22px 0 6px;
+    letter-spacing: 0.02em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    clear: both;
+  }
+  .seam-h .lake  { color: var(--lake); }
+  .seam-h .nicks { color: var(--rust); }
+  .seam-h .lane-dots { display: inline-flex; gap: 3px; margin-left: 6px; }
+  .seam-h .ld { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+  .seam-h .ld.code     { background: var(--lane-code); }
+  .seam-h .ld.ops      { background: var(--lane-ops); }
+  .seam-h .ld.comms    { background: var(--lane-comms); }
+  .seam-h .ld.planning { background: var(--lane-planning); }
+  .seam-h .ld.advisory { background: var(--lane-advisory); }
+
+  /* ── Pattern blocks ──────────────────────────────────────── */
+  .pattern-block { margin: 12px 0; }
+  .pattern-block .label {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--rust);
+    background: var(--paper-3);
+    border: 1px solid var(--ink-soft);
+    padding: 1px 8px;
+    border-radius: 2px;
+    margin-bottom: 5px;
+    letter-spacing: 0.04em;
+  }
+  .pattern-block p { margin: 0; font-size: 0.9375rem; line-height: 1.65; }
+
+  /* ── Checklist ──────────────────────────────────────────── */
+  .checklist {
+    background: var(--paper-3);
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    padding: 0;
+    margin: 14px 0;
+    overflow: hidden;
+  }
+  .checklist .pre-tag {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 7px 14px;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    font-weight: 700;
+  }
+  .checklist ul {
+    list-style: none;
+    padding: 14px 18px;
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 0.8125rem;
+    line-height: 1.85;
+  }
+  .checklist li {
+    position: relative;
+    padding-left: 22px;
+    margin-bottom: 6px;
+  }
+  .checklist li::before {
+    content: "\2610";
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: var(--rust);
+    font-size: 0.875rem;
+  }
+  .checklist li strong { color: var(--ink); font-weight: 700; }
+
+  /* ── Closer ─────────────────────────────────────────────── */
+  .closer {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.125rem;
+    line-height: 1.5;
+    color: var(--ink);
+    margin: 18px 0 0;
+    padding-top: 14px;
+    border-top: 1px dashed var(--ink-soft);
+    clear: both;
+  }
+
+  /* ────────────────────────────────────────────────────────
+     RIGHT RAIL — TOC + Crew Marginalia (lane-banded)
+     ──────────────────────────────────────────────────────── */
+  .rail {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    position: sticky;
+    top: 80px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+  }
+  .rail .toc {
+    background: var(--paper-2);
+    border: 1.5px solid var(--ink);
+    border-radius: 4px;
+    padding: 18px 20px;
+    position: static;
+  }
+  .rail .toc-title {
+    font-family: var(--serif);
+    font-size: 0.6875rem;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--rust);
+    font-weight: 700;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--ink-soft);
+  }
+  .rail .toc-list { list-style: none; display: flex; flex-direction: column; padding: 0; margin: 0; }
+  .rail .toc-list a {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 6px 0;
+    color: var(--ink);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    border-bottom: 1px dashed var(--ink-soft);
+    font-weight: 500;
+  }
+  .rail .toc-list li:last-child a { border-bottom: none; }
+  .rail .toc-list .marker {
+    color: var(--rust);
+    font-family: var(--serif);
+    font-weight: 700;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+    width: 22px;
+  }
+  .rail .toc-list a:hover, .rail .toc-list .active a { color: var(--rust); text-decoration: none; }
+  .rail .toc-list .active { font-weight: 700; }
+  .rail .toc-tail { margin-top: 6px; }
+
+  .rail .toc-lane-group { margin: 6px 0 4px 22px; }
+  .rail .toc-lane-group .lane-cap {
+    font-family: var(--mono);
+    font-size: 0.59375rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin: 6px 0 2px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .rail .toc-lane-group .lane-cap .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .rail .toc-lane-group .lane-cap[data-lane="planning"] { color: var(--lane-planning); }
+  .rail .toc-lane-group .lane-cap[data-lane="planning"] .dot { background: var(--lane-planning); }
+  .rail .toc-lane-group .lane-cap[data-lane="code"] { color: var(--lane-code); }
+  .rail .toc-lane-group .lane-cap[data-lane="code"] .dot { background: var(--lane-code); }
+  .rail .toc-lane-group .lane-cap[data-lane="ops"] { color: var(--lane-ops); }
+  .rail .toc-lane-group .lane-cap[data-lane="ops"] .dot { background: var(--lane-ops); }
+  .rail .toc-lane-group .lane-cap[data-lane="advisory"] { color: var(--lane-advisory); }
+  .rail .toc-lane-group .lane-cap[data-lane="advisory"] .dot { background: var(--lane-advisory); }
+  .rail .toc-lane-group .lane-cap[data-lane="comms"] { color: var(--lane-comms); }
+  .rail .toc-lane-group .lane-cap[data-lane="comms"] .dot { background: var(--lane-comms); }
+  .rail .toc-lane-group ul { list-style: none; padding: 0; margin: 0; }
+  .rail .toc-lane-group li a {
+    font-family: var(--mono);
+    font-size: 0.71875rem;
+    color: var(--ink-soft);
+    padding: 1px 0 1px 14px;
+    border: none;
+    display: flex;
+    gap: 6px;
+  }
+  .rail .toc-lane-group li a .nk { color: var(--rust); font-weight: 700; width: 32px; }
+  .rail .toc-lane-group li a:hover { color: var(--rust); text-decoration: none; }
+
+  /* Crew marginalia — pill grid */
+  .crew-marg {
+    background: var(--paper-2);
+    border: 1.5px solid var(--ink);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .crew-marg .head {
+    background: var(--paper-3);
+    padding: 9px 14px;
+    font-family: var(--serif);
+    font-size: 0.6875rem;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--rust);
+    font-weight: 700;
+    border-bottom: 1px solid var(--ink-soft);
+  }
+  .crew-marg .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding: 14px 14px 10px;
+  }
+  .crew-marg .pill {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--paper-2);
+    border: 1px solid var(--ink);
+    border-bottom: 3px solid var(--lane-color, var(--ink));
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 0.8125rem;
+    color: var(--ink);
+    text-decoration: none;
+    transition: all 0.15s;
+  }
+  .crew-marg .pill[data-lane="planning"] { --lane-color: var(--lane-planning); }
+  .crew-marg .pill[data-lane="code"]     { --lane-color: var(--lane-code); }
+  .crew-marg .pill[data-lane="ops"]      { --lane-color: var(--lane-ops); }
+  .crew-marg .pill[data-lane="advisory"] { --lane-color: var(--lane-advisory); }
+  .crew-marg .pill[data-lane="comms"]    { --lane-color: var(--lane-comms); }
+  .crew-marg .pill:hover {
+    border-color: var(--rust);
+    color: var(--rust);
+    text-decoration: none;
+  }
+  .crew-marg .pill.active {
+    background: var(--rust);
+    color: var(--paper);
+    border-color: var(--rust);
+  }
+  .crew-marg .pill .glyphs {
+    position: absolute;
+    bottom: 3px;
+    right: 5px;
+    font-size: 0.5rem;
+    color: var(--ink-soft);
+    opacity: 0.85;
+    display: flex;
+    gap: 2px;
+    line-height: 1;
+  }
+  .crew-marg .pill[data-model="opus"] .glyphs .m { color: var(--rust); font-weight: 700; }
+  .crew-marg .pill.active .glyphs { color: var(--paper); opacity: 0.85; }
+  .crew-marg .pill.active .glyphs .m { color: var(--paper); }
+  .crew-marg .legend {
+    padding: 6px 14px;
+    font-family: var(--mono);
+    font-size: 0.59375rem;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    text-align: center;
+    border-top: 1px dashed var(--ink-soft);
+    margin: 0 14px;
+    letter-spacing: 0.04em;
+  }
+  .crew-marg .current {
+    padding: 8px 14px 14px;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--ink-soft);
+    text-align: center;
+    letter-spacing: 0.04em;
+  }
+  .crew-marg .current strong { color: var(--rust); font-weight: 700; }
+
+  /* ── Mobile ────────────────────────────────────────────── */
+  @media (max-width: 880px) {
+    .rule-float {
+      float: none;
+      width: 100%;
+      margin: 12px 0;
+    }
+    .req-pair { grid-template-columns: 1fr; }
+    .matrix { font-size: 0.625rem; }
+    .matrix th, .matrix td { padding: 4px 4px; }
+    .rail {
+      position: static;
+      max-height: none;
+      overflow: visible;
+    }
+    .crew-marg .grid { grid-template-columns: repeat(5, 1fr); }
+    .crew-marg .pill { aspect-ratio: 1 / 1; font-size: 0.75rem; }
+  }
+</style>
+</content>
