@@ -13,9 +13,21 @@ type Post = {
   source?: string;
   excerpt: string;
 };
-const posts: Post[] = [];
+const posts: Post[] = [
+  {
+    slug: 'negative-space-is-the-contract',
+    title: 'The Negative Space Is the Contract',
+    date: '2026-05-06',
+    month: 'May',
+    day: '06',
+    year: '2026',
+    category: 'Lessons Learned',
+    source: 'sts2Player subagent crew (agent-architecture)',
+    excerpt: 'Carving nine AI specialists out of the training repo taught me a lesson that generalizes far beyond AI: when you scope any role, the load-bearing part of the spec is the section that names what the role *does not do* — and the section is only useful if it is specific.',
+  },
+];
 ---
-<Base title="What I Learned" activeTab="learned">
+<Base title="Lessons Learned" activeTab="learned">
   <main class="frame">
     <div class="park-header">
       <div>

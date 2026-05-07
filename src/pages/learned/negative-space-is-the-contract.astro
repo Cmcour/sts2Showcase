@@ -1,0 +1,1002 @@
+---
+import Post from '../../layouts/Post.astro';
+
+const headings = [
+  { text: 'The AI side, briefly', id: 'ai-side' },
+  { text: 'The first drafts', id: 'first-drafts' },
+  { text: 'The flip', id: 'flip' },
+  { text: 'The same shape everywhere', id: 'same-shape' },
+  { text: "Why it's harder to write", id: 'harder' },
+  { text: 'The takeaway', id: 'takeaway' },
+];
+---
+
+<Post
+  title="The Negative Space Is the Contract"
+  date="May 2026"
+  activeTab="learned"
+  category="Lessons Learned"
+  readingTime="~9 min read"
+  headings={headings}
+  trailLabel="field journal entry"
+>
+
+  {/* ── Hero specimen — teaches the visual grammar of every figure below ── */}
+  <aside class="hero-specimen-block" aria-label="Specimen — the part most specs leave blank">
+    <div class="hero-specimen">
+      <div class="corner-tag">specimen</div>
+      <div class="blank-label">[ the part most specs<br/>leave blank ]</div>
+      <div class="corner-tick">read it</div>
+    </div>
+    <div class="hero-specimen-caption">
+      Every figure below is built around a labeled blank. This panel teaches the grammar.
+    </div>
+  </aside>
+
+  <p class="lede">A few weeks into the training project, I tried to carve up the work into specialists. Not human specialists — AI ones. The setup is now a thing some developers do: instead of working with a single all-purpose AI assistant, you give it a roster of named sub-assistants, each with its own written-down spec, each scoped to a different slice of the codebase. One handles the Python. One handles the C# game mod. One babysits the worker machines. And so on.</p>
+
+  <p>I'll explain the AI part as we go. Honestly, it's not the part of this story that mattered most. The part that mattered most is something every reader has felt, even if they've never touched any of this tooling: when you write a role description and try to use it to keep work in its lane, the section you spend all your time on isn't the one doing the work.</p>
+
+  <p>The section doing the work is the one you almost forgot to write.</p>
+
+  <h2 id="ai-side"><span class="num">§ 1</span>The AI side, briefly</h2>
+
+  <p>For readers new to multi-agent AI setups: here's the one-paragraph version. Modern AI coding tools (Claude Code, in my case) let you pre-define a cast of "subagents" — each one is just a markdown file that describes a personality and a job. When the main session needs a job done, it summons the right subagent for it. Each subagent only sees the files relevant to its role; it can't accidentally edit the rest of the project, because its spec told it not to and its tools don't let it. With a careful spec, the subagent's boundary <em>is</em> the spec.</p>
+
+  <p>So when I sat down to carve nine specialists out of the project, what I was actually doing was writing nine markdown files. Each one had a name, a list of files it owned, a list of responsibilities, and a list of hard rules. Together they make up the crew that runs the training repo with me — a planner (<em>blueprint-beacon</em>), a Python specialist, a C# mod specialist (<em>mod-man</em>), a fleet-of-machines guardian (<em>worker-warden</em>), a measurement specialist, a couple of advisory-only reviewers, and a couple of communications agents.</p>
+
+  <p>That's the setup. The lesson I want to tell you about is what happened when I tried to keep the lanes from leaking into each other.</p>
+
+  <h2 id="first-drafts"><span class="num">§ 2</span>The first drafts — all the wrong section was load-bearing</h2>
+
+  <p>Every spec I wrote on day one followed the same shape. Top of the file: name, model, a one-line description. Then a long, careful section called something like <strong>Owns</strong> — a list of every file the agent was responsible for, every artifact it produced, every responsibility it carried. I spent most of my drafting time on that section. It felt like the heart of the spec. <em>This is what you do.</em></p>
+
+  <p>Underneath, almost as an afterthought, was a one-line section called <strong>Cedes</strong> — a list of what other agents owned. I'd toss in three or four words: "C# mod → mod-man." "Planning → blueprint-beacon." Done. Move on.</p>
+
+  <p>The drafts I shipped on day one all had this shape. And almost immediately, the lanes started leaking.</p>
+
+  {/* ── FIGURE 1 — The Empty Cedes ── */}
+  <figure class="fig">
+    <div class="specimen">
+      <div class="file-bar"><span>python-specialist.md</span><span class="day">DAY 1</span></div>
+      <div class="pop-section">
+        <div class="lbl"><span>Owns</span><span class="count">5 items, condensed</span></div>
+        <ul>
+          <li>Python sources under src/bot/</li>
+          <li>training entry points</li>
+          <li>actor-learner classes</li>
+          <li>diff summaries</li>
+          <li>changelog entries for bot/</li>
+        </ul>
+      </div>
+      <div class="blank-zone">
+        <div class="lbl"><span>Cedes</span><span class="ct">— body —</span></div>
+        <div class="blank-body">
+          <div class="blank-label">[ <span class="b">3 words:</span> "C# mod &rarr; mod-man." ]</div>
+        </div>
+      </div>
+    </div>
+    <figcaption class="fig-caption"><span class="figtag">Figure 1</span>Day 1. The section that did most of the work was the section that didn't exist yet. The empty zone is taller than the populated one above it.</figcaption>
+  </figure>
+
+  <p>The Python specialist, asked to fix a Python bug, would also "improve" the Windows batch file that invoked the Python script. While in there, it would also tweak the C# mod that emitted the JSON the Python bug was about — because hey, a small clarifying rename on that side would make the whole thing read better. So a request to fix one Python issue would come back as a three-lane diff: Python plus a batch file plus a C# patch, none of which were what I'd asked for, all of which had slipped past my review because I'd asked for "fix the Python" and the diff started with Python.</p>
+
+  <p>This kept happening. Different agents. Different lanes. Same shape every time. The agent would do the requested work <em>correctly</em> and then keep going, drifting into adjacent territory because nothing in its spec had told it to stop.</p>
+
+  <p>I went back and re-read the specs. The "Owns" section was airtight. The "Cedes" section was three words.</p>
+
+  <p>That was the bug.</p>
+
+  <h2 id="flip"><span class="num">§ 3</span>The flip — what the spec was actually for</h2>
+  <svg class="under" viewBox="0 0 90 8" aria-hidden="true"><path d="M 2 4 Q 18 1, 32 5 T 60 3 T 86 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+
+  <p>The "Owns" section turns out to be the thing the agent agrees with itself about. Of course it owns Python. Of course it produces diff summaries. The "Owns" section is the agent's <em>self-image</em>. It's the part of the spec that, if it were missing, the agent would still half-derive from its name and a glance at the repo. Every Python specialist I've ever heard of owns Python.</p>
+
+  <p>The "Cedes" section is different. Cedes is the part the agent does <em>not</em> know unless someone tells it. It's the part where the surrounding world's structure leaks into the spec — where I, the project lead, encode "and by the way, there's a separate person who owns the C# mod, so when you see C# files in your reach, hands off." Without that line, the agent has no way to know the C# mod isn't its problem. The C# files compile. They affect the Python. They look fixable. Why wouldn't a good specialist help with them?</p>
+
+  <p>So I rewrote every spec to invert the weight. The "Owns" section got compressed to bullet points; the "Cedes" section got promoted, expanded, and made specific. Not "C# mod → mod-man," but:</p>
+
+  <ul class="cedes-list">
+    <li><em>Cedes the C# Harmony mod and the launch_loop.bat injector to mod-man, completely. Even if the C# bug looks one-line and obvious. Flag it; do not edit it.</em></li>
+    <li><em>Cedes planning to blueprint-beacon. Do not propose a multi-step roadmap. Propose the next single concrete change inside an already-approved phase.</em></li>
+    <li><em>Cedes fleet operations to worker-warden. Even if a worker is visibly down. Flag it; do not SSH in.</em></li>
+  </ul>
+
+  {/* ── FIGURE 2 — The Spec-Card Flip with Negative Space Made Visible ── */}
+  <figure class="fig">
+    <div class="spec-pair">
+      <div class="specimen">
+        <div class="file-bar"><span>python-specialist.md</span><span class="day">DAY 1</span></div>
+        <div class="pop-section">
+          <div class="lbl"><span>Owns</span><span class="count">5 items</span></div>
+          <ul>
+            <li>Python sources</li>
+            <li>training entry points</li>
+            <li>actor-learner classes</li>
+            <li>diff summaries</li>
+            <li>changelog entries</li>
+          </ul>
+        </div>
+        <div class="blank-zone">
+          <div class="lbl"><span>Cedes</span><span class="ct">— body —</span></div>
+          <div class="blank-body">
+            <div class="blank-label">[ the part I almost<br/>left blank ]</div>
+          </div>
+        </div>
+      </div>
+      <div class="specimen">
+        <div class="file-bar"><span>python-specialist.md</span><span class="day">DAY 2</span></div>
+        <div class="pop-section">
+          <div class="lbl"><span>Owns</span><span class="count">2 items</span></div>
+          <ul>
+            <li>Python sources under src/bot/</li>
+            <li>training entry points</li>
+          </ul>
+        </div>
+        <div class="blank-zone filled">
+          <div class="lbl"><span>Cedes</span><span class="ct">3 items, specific</span></div>
+          <div class="filled-body">
+            <div class="excerpt">Cedes the C# Harmony mod and launch_loop.bat to mod-man, completely. Even if the C# bug looks one-line and obvious. Flag it; do not edit it.</div>
+            <div class="excerpt">Cedes planning to blueprint-beacon. Do not propose a multi-step roadmap.</div>
+            <div class="excerpt">Cedes fleet operations to worker-warden. Even if a worker is visibly down. Flag it; do not SSH in.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption class="fig-caption"><span class="figtag">Figure 2</span>The same footprint. Once empty, once full. The work was filling the zone below the section header.</figcaption>
+  </figure>
+
+  <p>Each spec got its negative space spelled out — what the role <em>doesn't</em> do, named in plain language, with the hard cases ("even if it looks obvious") explicit. After that the lane-leaking mostly stopped. Not entirely — the seams where two lanes touch are their own story — but the easy class of leak, the one where an agent helpfully wandered into adjacent territory, went away.</p>
+
+  <p>The spec wasn't a description of the role. It was a fence around the role. And the fence is built out of the negative space.</p>
+
+  <h2 id="same-shape"><span class="num">§ 4</span>Where I started to see the same shape everywhere</h2>
+
+  <p>Once you notice the shape once, it's hard to stop noticing it. I started looking back at things I'd worked with before this project and seeing the same pattern in places that had nothing to do with AI agents.</p>
+
+  <p><strong>Job descriptions.</strong> The best job descriptions I've ever seen — the ones where the person hired actually does the job that was advertised — have a section that names what the role <em>isn't</em>. "This is not a managerial role; you will not be running a team." "This is not a research role; you will not be publishing." "This role does not own the deploy pipeline; that's [Other Team]." Those JDs are rare. Most JDs are pure positive space — a list of responsibilities, a list of qualifications, a list of nice-to-haves — and the people hired into them spend their first six months gradually discovering which adjacent territory they're expected not to touch by accidentally touching it and being told. The negative space is in the company; it's just not in the JD. The new hire has to reconstruct it from gossip.</p>
+
+  <p><strong>Project charters.</strong> Every project I've worked on that finished anywhere close to its planned scope had an explicit out-of-scope section. "We are not migrating the auth system. We are not redesigning the billing flow. We are not addressing the legacy import path." Every project that ballooned into a six-month odyssey had a charter that said, more or less, "we will improve the user experience." Improve which user experience? Improve it by how much? Improve it for whom? The positive scope is just a flag in the ground. The out-of-scope list is the actual fence.</p>
+
+  <p><strong>Code-review rubrics.</strong> The good ones name what <em>not</em> to bring up in the review. "Don't litigate the variable names; the team has agreed on a convention. Don't flag missing tests on this PR; the test plan is in a separate ticket. Don't propose architectural changes; this PR is a bug fix and an architectural change is a separate conversation." Without those nots, every PR review collapses into a debate about everything, because every reviewer's mental list of things-worth-bringing-up is unbounded by default. The reviewers know what <em>can</em> be a code-review concern. They need the team to tell them what's <em>not</em> one this week.</p>
+
+  <p><strong>Pull-request templates.</strong> Same shape. The template that says "What does this PR do? What does it not do?" gets you a description of the change. The template that just says "What does this PR do?" gets you a sales pitch.</p>
+
+  {/* ── FIGURE 3 — The Four Empty Sections ── */}
+  <figure class="fig">
+    <div class="empty-fence-grid">
+      <div class="specimen">
+        <div class="file-bar"><span>JOB-DESCRIPTION.md</span></div>
+        <div class="pos-section">
+          <div class="ph">Responsibilities</div>
+          <div class="pb">Build features. Ship code. Mentor juniors.</div>
+        </div>
+        <div class="blank-zone short">
+          <div class="lbl"><span>Not this role</span></div>
+          <div class="blank-body">
+            <div class="blank-label">[ where the fence goes ]</div>
+          </div>
+        </div>
+      </div>
+      <div class="specimen">
+        <div class="file-bar"><span>PROJECT-CHARTER.md</span></div>
+        <div class="pos-section">
+          <div class="ph">Goals</div>
+          <div class="pb">Improve the user experience for returning users.</div>
+        </div>
+        <div class="blank-zone short">
+          <div class="lbl"><span>Out of scope</span></div>
+          <div class="blank-body">
+            <div class="blank-label">[ where the fence goes ]</div>
+          </div>
+        </div>
+      </div>
+      <div class="specimen">
+        <div class="file-bar"><span>CODE-REVIEW-RUBRIC.md</span></div>
+        <div class="pos-section">
+          <div class="ph">Look for</div>
+          <div class="pb">Correctness. Readability. Test coverage.</div>
+        </div>
+        <div class="blank-zone short">
+          <div class="lbl"><span>Don't bring up this PR</span></div>
+          <div class="blank-body">
+            <div class="blank-label">[ where the fence goes ]</div>
+          </div>
+        </div>
+      </div>
+      <div class="specimen">
+        <div class="file-bar"><span>PR-TEMPLATE.md</span></div>
+        <div class="pos-section">
+          <div class="ph">What does this PR do?</div>
+          <div class="pb">Describe the change.</div>
+        </div>
+        <div class="blank-zone short">
+          <div class="lbl"><span>What does this PR NOT do?</span></div>
+          <div class="blank-body">
+            <div class="blank-label">[ where the fence goes ]</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption class="fig-caption"><span class="figtag">Figure 3</span>The same fence, four documents, all empty. This is what most of these templates ship with. The repetition of the empty zone IS the argument.</figcaption>
+  </figure>
+
+  <p>It's the same fence in every case. The work the role does is the agent's self-image — easy to write down, partially derivable from the title, the section that feels load-bearing. The work the role <em>doesn't</em> do is the contract with the surrounding system. It's the part the surrounding system needs you to know, that nothing about your role tells you on its own.</p>
+
+  <h2 id="harder"><span class="num">§ 5</span>Why the negative space is harder to write</h2>
+
+  <p>Writing positive responsibilities is easy because the answer is in the role. <em>What does a Python specialist do? Python.</em> <em>What does a senior backend engineer do? Senior backend engineering.</em> You can stare at the title and produce three bullet points without leaving your chair.</p>
+
+  <p>Writing negative responsibilities is harder because the answer is in the <em>organization</em>, not the role. To write "this role does not own the deploy pipeline," I need to know there's a deploy pipeline, that it's owned, by whom, and that the boundary between this role and that owner is somewhere I expect new hires to bump into. That's four facts about the surrounding system, none of which are in the role itself. The reason most JDs and most project charters and most agent specs leave the negative space empty isn't laziness. It's that nobody gathered the four facts.</p>
+
+  <p>Once I'd noticed this, the path forward stopped being a writing problem and started being a <em>cataloging</em> problem. The reason my specs had no real negative space on day one wasn't that I didn't believe in negative space. It's that I hadn't sat down and made a list of every adjacent lane and named who owned it. The negative-space section couldn't be specific until I'd done that work.</p>
+
+  {/* ── FIGURE 4 — The Lane Table with the Empty Third Column ── */}
+  <figure class="fig">
+    <div class="lane-table-wrap">
+      <div class="lane-table">
+        <div class="table-bar">lane ownership table — sts2-player repo — DAY 1</div>
+        <table>
+          <thead>
+            <tr><th>Lane</th><th>Owner</th><th class="col-empty">Off-limits to</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="lane">Python sources</td><td>python-specialist</td><td class="filled-cell">mod-man, worker-warden, blueprint-beacon</td></tr>
+            <tr><td class="lane">C# Harmony mod</td><td>mod-man</td><td class="empty-cell"></td></tr>
+            <tr><td class="lane">launch_loop.bat</td><td>mod-man</td><td class="empty-cell"></td></tr>
+            <tr><td class="lane">Worker fleet</td><td>worker-warden</td><td class="empty-cell"></td></tr>
+            <tr><td class="lane">Multi-step plans</td><td>blueprint-beacon</td><td class="empty-cell"></td></tr>
+            <tr><td class="lane">Eval runs</td><td>measurement-monk</td><td class="empty-cell"></td></tr>
+            <tr><td class="lane">Hard-rule audits</td><td>sargent-safety</td><td class="empty-cell"></td></tr>
+            <tr><td class="lane">Commit messages</td><td>comms-relay</td><td class="empty-cell"></td></tr>
+            <tr><td class="lane">Research notes</td><td>recon-runner</td><td class="empty-cell"></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="empty-arrow" aria-hidden="true">
+        <svg viewBox="0 0 32 14" fill="none">
+          <path d="M 2 7 Q 12 1, 22 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M 18 3 L 22 7 L 18 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+        <div class="annot">[ <span class="b">this column</span> is the<br/>four-facts work ]</div>
+      </div>
+    </div>
+    <figcaption class="fig-caption"><span class="figtag">Figure 4</span>The lane table on Day 1. The first two columns are easy: every spec already has them. The third column is the work — and on Day 1, it's almost all blank.</figcaption>
+  </figure>
+
+  <p>For the AI crew, "doing that work" looked like writing a one-page table of who owned what across the whole repo, then walking each agent's spec line by line and asking <em>given this table, what does this agent decline?</em> The first table took maybe an hour. After that the negative-space sections wrote themselves, because the answer for each agent was just a query against the table.</p>
+
+  <p>I think this generalizes. The reason the good JDs and the good project charters are rare isn't that the people writing them are smarter. It's that someone, somewhere upstream of those documents, sat down and made the lane table. Once the table exists, every fence on every role is just a query.</p>
+
+  <h2 id="takeaway"><span class="num">§ 6</span>The takeaway, in one line and then in seven words</h2>
+  <svg class="under" viewBox="0 0 90 8" aria-hidden="true"><path d="M 2 4 Q 18 1, 32 5 T 60 3 T 86 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+
+  <p>The line: when you're scoping any role — a contractor, a hire, a project, a PR, an AI agent, a team — the load-bearing part of the spec is the section that names what the role doesn't do, and the section is only useful if it's specific.</p>
+
+  <div class="principle">
+    <p class="quote">Positive space is the headline.</p>
+    <p>The headline gets you attention. The contract gets you the work back inside its lane.</p>
+    <p>It took me about a day and a half to learn this from a roster of nine markdown files that kept leaking. I think I would have learned it faster from the first job description I ever wrote, except that one didn't have a negative-space section at all, and so I never noticed which section I'd skipped.</p>
+  </div>
+
+  {/* ── FIGURE 5 — The Thesis as Typographic Plate ── */}
+  <figure class="fig">
+    <div class="thesis-frame">
+      <div class="corner-tag">
+        <svg viewBox="0 0 18 10" fill="none" aria-hidden="true">
+          <path d="M 2 5 L 16 5" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M 12 1 L 16 5 L 12 9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+        <span>[ the load-bearing section ]</span>
+      </div>
+      <div class="thesis">the negative space is the contract.</div>
+      <div class="corner-tick">specimen 5 / 5</div>
+    </div>
+    <figcaption class="fig-caption"><span class="figtag">Figure 5</span>The thesis, with room around it. The negative space is the contract.</figcaption>
+  </figure>
+
+  {/* ── Custom right-rail: trail markers + specimens index ── */}
+  <Fragment slot="aside">
+    <aside class="rail">
+      <div class="rail-panel">
+        <div class="rail-title">⟢ trail markers ⟣</div>
+        <ul class="rail-list">
+          <li><a href="#ai-side"><span class="marker">§1</span><span>The AI side, briefly</span></a></li>
+          <li><a href="#first-drafts"><span class="marker">§2</span><span>The first drafts</span></a></li>
+          <li><a href="#flip"><span class="marker">§3</span><span>The flip</span></a></li>
+          <li><a href="#same-shape"><span class="marker">§4</span><span>The same shape</span></a></li>
+          <li><a href="#harder"><span class="marker">§5</span><span>Why it's harder</span></a></li>
+          <li><a href="#takeaway"><span class="marker">§6</span><span>The takeaway</span></a></li>
+        </ul>
+      </div>
+      <div class="rail-panel">
+        <div class="rail-title">⟢ specimens ⟣</div>
+        <ul class="rail-list specimens-list">
+          <li><a href="#first-drafts"><span class="sp-tag">FIG 1</span><span class="sp-desc">[empty cedes]</span></a></li>
+          <li><a href="#flip"><span class="sp-tag">FIG 2</span><span class="sp-desc">[the flip]</span></a></li>
+          <li><a href="#same-shape"><span class="sp-tag">FIG 3</span><span class="sp-desc">[four empty sections]</span></a></li>
+          <li><a href="#harder"><span class="sp-tag">FIG 4</span><span class="sp-desc">[two empty columns]</span></a></li>
+          <li><a href="#takeaway"><span class="sp-tag">FIG 5</span><span class="sp-desc">[the thesis]</span></a></li>
+        </ul>
+      </div>
+    </aside>
+  </Fragment>
+</Post>
+
+<style>
+  /* ── Defensive: no dropcaps. Permanent rule per drafts/dd/style-guide.md ── */
+  :global(.body-frame) p::first-letter,
+  :global(.body-frame) .lede::first-letter {
+    font-size: inherit;
+    float: none;
+    line-height: inherit;
+    padding: 0;
+    margin: 0;
+    color: inherit;
+    font-weight: inherit;
+    font-family: inherit;
+  }
+
+  /* ── Lede + body type ──────────────────────────────────────── */
+  :global(.body-frame) .lede {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.3125rem;
+    line-height: 1.5;
+    color: var(--ink);
+    margin: 0 0 22px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--ink-soft);
+  }
+
+  :global(.body-frame) p {
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--ink);
+    margin: 0 0 14px;
+  }
+  :global(.body-frame) ul,
+  :global(.body-frame) ol {
+    margin: 0 0 16px 22px;
+  }
+  :global(.body-frame) li {
+    margin: 0 0 8px;
+    line-height: 1.65;
+  }
+  :global(.body-frame) strong { font-weight: 700; }
+  :global(.body-frame) em { font-style: italic; }
+
+  /* ── §-headings — serif kicker with §N rust marker ────────── */
+  :global(.body-frame) h2 {
+    font-family: var(--serif);
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 36px 0 14px;
+    letter-spacing: -0.005em;
+    line-height: 1.15;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    scroll-margin-top: 80px;
+  }
+  :global(.body-frame) h2 .num {
+    font-family: var(--serif);
+    font-size: 0.8125rem;
+    color: var(--rust);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  :global(.body-frame) svg.under {
+    display: block;
+    color: var(--rust);
+    width: 90px;
+    height: 8px;
+    margin: -4px 0 18px;
+  }
+
+  /* ── Cedes-list (the three rust-italic excerpts in §3 prose) ── */
+  :global(.body-frame) .cedes-list {
+    list-style: none;
+    margin: 14px 0 18px;
+    padding: 0;
+  }
+  :global(.body-frame) .cedes-list li {
+    font-family: var(--mono);
+    font-size: 0.875rem;
+    font-style: italic;
+    color: var(--ink);
+    border-left: 2px solid var(--rust);
+    padding: 6px 0 6px 14px;
+    margin: 8px 0;
+    line-height: 1.55;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Hero specimen — teaches the visual grammar before the body
+     ─────────────────────────────────────────────────────────── */
+  .hero-specimen-block {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 22px;
+    align-items: center;
+    padding: 18px 22px;
+    margin: 0 0 24px;
+    background: var(--paper-2);
+    border: 1.5px solid var(--ink);
+    border-left: 4px solid var(--rust);
+  }
+  .hero-specimen {
+    width: 180px;
+    height: 100px;
+    background: var(--paper-3);
+    border: 1.5px solid var(--ink);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-image: repeating-linear-gradient(
+      135deg,
+      transparent 0,
+      transparent 10px,
+      rgba(31, 44, 32, 0.025) 10px,
+      rgba(31, 44, 32, 0.025) 11px
+    );
+    flex-shrink: 0;
+  }
+  .hero-specimen .corner-tag {
+    position: absolute;
+    top: 6px; left: 8px;
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    color: var(--rust);
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .hero-specimen .blank-label {
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    color: var(--ink-soft);
+    font-style: italic;
+    letter-spacing: 0.04em;
+    text-align: center;
+    padding: 0 8px;
+    font-feature-settings: "calt" off;
+  }
+  .hero-specimen .corner-tick {
+    position: absolute;
+    bottom: 6px; right: 8px;
+    font-family: var(--mono);
+    font-size: 0.5rem;
+    color: var(--ink-soft);
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .hero-specimen-caption {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 0.875rem;
+    color: var(--ink-soft);
+    line-height: 1.5;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Figure shell + caption (shared across all 5 figures)
+     ─────────────────────────────────────────────────────────── */
+  :global(.body-frame) figure.fig {
+    margin: 26px 0 30px;
+  }
+  :global(.body-frame) figure.fig .fig-caption {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 0.84375rem;
+    color: var(--ink-soft);
+    margin-top: 12px;
+    padding-left: 14px;
+    border-left: 2px solid var(--rust);
+    line-height: 1.5;
+  }
+  :global(.body-frame) figure.fig .figtag {
+    font-family: var(--mono);
+    font-style: normal;
+    font-size: 0.65625rem;
+    color: var(--rust);
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-right: 8px;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Specimen panel — the recurring frame for figures 1, 2, 3
+     ─────────────────────────────────────────────────────────── */
+  .specimen {
+    background: var(--paper-3);
+    border: 1.5px solid var(--ink);
+    overflow: hidden;
+  }
+  .specimen .file-bar {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 8px 14px;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .specimen .file-bar .day {
+    color: #e8b48f;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    font-size: 0.625rem;
+  }
+  .specimen .pop-section {
+    padding: 12px 18px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    line-height: 1.6;
+    color: var(--ink);
+  }
+  .specimen .pop-section .lbl {
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--rust);
+    font-weight: 700;
+    margin-bottom: 5px;
+    border-bottom: 1px dashed var(--ink-soft);
+    padding-bottom: 3px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .specimen .pop-section .lbl .count {
+    color: var(--ink-soft);
+    font-weight: 600;
+    font-size: 0.59375rem;
+  }
+  /* override global .col / global li styles — keep mono inside specimens */
+  :global(.body-frame) .specimen .pop-section ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  :global(.body-frame) .specimen .pop-section li {
+    padding: 1px 0;
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    line-height: 1.55;
+  }
+  :global(.body-frame) .specimen .pop-section li::before {
+    content: "− ";
+    color: var(--ink-soft);
+  }
+
+  /* ── The blank zone — the v6 visual conceit ───────────────── */
+  .blank-zone {
+    background: var(--paper-2);
+    border-top: 1px dashed var(--ink-soft);
+    padding: 14px 18px;
+    position: relative;
+    background-image: repeating-linear-gradient(
+      135deg,
+      transparent 0,
+      transparent 12px,
+      rgba(31, 44, 32, 0.03) 12px,
+      rgba(31, 44, 32, 0.03) 13px
+    );
+  }
+  .blank-zone .lbl {
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--rust);
+    font-weight: 700;
+    margin-bottom: 8px;
+    border-bottom: 1px dashed var(--ink-soft);
+    padding-bottom: 3px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .blank-zone .lbl .ct {
+    color: var(--ink-soft);
+    font-weight: 600;
+    font-size: 0.59375rem;
+  }
+  .blank-zone .blank-body {
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .blank-zone.short .blank-body { height: 100px; }
+  .blank-zone .blank-label {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    font-style: italic;
+    color: var(--ink-soft);
+    letter-spacing: 0.04em;
+    text-align: center;
+    line-height: 1.4;
+    font-feature-settings: "calt" off;
+  }
+  .blank-zone .blank-label .b {
+    color: var(--rust);
+    font-weight: 700;
+    font-style: normal;
+    font-family: var(--mono);
+  }
+
+  /* ── Filled variant of blank-zone: Day-2 in Figure 2 ─────── */
+  .blank-zone.filled {
+    background: var(--paper-3);
+    background-image: none;
+  }
+  .blank-zone.filled .filled-body {
+    padding: 0;
+    /* Match exact footprint of empty: 200px content height */
+    height: 200px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+  }
+  .blank-zone.filled .excerpt {
+    font-family: var(--mono);
+    font-size: 0.71875rem;
+    font-style: italic;
+    color: var(--ink);
+    border-left: 2px solid var(--rust);
+    padding: 4px 0 4px 12px;
+    line-height: 1.5;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Figure 2 — paired specimens (footprint-matched)
+     ─────────────────────────────────────────────────────────── */
+  .spec-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin: 0;
+    align-items: stretch;
+  }
+  .spec-pair .specimen {
+    display: flex;
+    flex-direction: column;
+  }
+  .spec-pair .specimen .pop-section {
+    /* The Day-2 card has fewer Owns items; pad the Owns section so the
+       blank-zone sits at the same Y as Day-1's blank-zone. */
+    flex: 0 0 auto;
+  }
+  .spec-pair .specimen .blank-zone {
+    flex: 1 1 auto;
+  }
+  /* Equalize the Owns block height across the two cards so the
+     blank-zone alignment is preserved. */
+  .spec-pair .specimen:nth-child(1) .pop-section { min-height: 158px; }
+  .spec-pair .specimen:nth-child(2) .pop-section { min-height: 158px; }
+
+  /* ─────────────────────────────────────────────────────────────
+     Figure 3 — 2x2 empty-fence grid
+     ─────────────────────────────────────────────────────────── */
+  .empty-fence-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin: 0;
+  }
+  .empty-fence-grid .specimen {
+    display: flex;
+    flex-direction: column;
+  }
+  .empty-fence-grid .pos-section {
+    padding: 10px 14px 6px;
+    color: var(--ink-soft);
+    opacity: 0.55;
+  }
+  .empty-fence-grid .pos-section .ph {
+    font-family: var(--mono);
+    font-size: 0.59375rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 3px;
+  }
+  .empty-fence-grid .pos-section .pb {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    line-height: 1.5;
+  }
+  .empty-fence-grid .blank-zone {
+    flex: 1 1 auto;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Figure 4 — Lane table with the empty third column
+     ─────────────────────────────────────────────────────────── */
+  .lane-table-wrap {
+    position: relative;
+    margin: 0;
+  }
+  .lane-table {
+    background: var(--paper);
+    border: 1.5px solid var(--ink);
+    overflow: hidden;
+    width: 100%;
+  }
+  .lane-table .table-bar {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 7px 14px;
+    font-family: var(--mono);
+    font-size: 0.65625rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .lane-table table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 0.71875rem;
+  }
+  .lane-table th {
+    background: var(--paper-3);
+    padding: 8px 12px;
+    font-size: 0.625rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 700;
+    text-align: left;
+    border-bottom: 1.5px solid var(--ink);
+    color: var(--ink);
+  }
+  .lane-table th.col-empty {
+    color: var(--rust);
+    position: relative;
+  }
+  .lane-table td {
+    padding: 7px 12px;
+    border-bottom: 1px dashed var(--ink-soft);
+    line-height: 1.4;
+    color: var(--ink);
+  }
+  .lane-table tr:last-child td { border-bottom: none; }
+  .lane-table td.lane { font-weight: 700; }
+  .lane-table td.empty-cell {
+    background-image: repeating-linear-gradient(
+      135deg,
+      transparent 0,
+      transparent 8px,
+      rgba(168, 78, 37, 0.05) 8px,
+      rgba(168, 78, 37, 0.05) 9px
+    );
+    min-height: 24px;
+  }
+  .lane-table td.filled-cell { color: var(--ink-soft); }
+
+  .empty-arrow {
+    position: absolute;
+    right: -6px; top: 86px;
+    width: 110px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--rust);
+    pointer-events: none;
+  }
+  .empty-arrow svg { width: 32px; height: 14px; flex-shrink: 0; }
+  .empty-arrow .annot {
+    font-family: var(--mono);
+    font-style: italic;
+    font-size: 0.625rem;
+    color: var(--ink-soft);
+    letter-spacing: 0.04em;
+    line-height: 1.3;
+    font-feature-settings: "calt" off;
+  }
+  .empty-arrow .annot .b {
+    color: var(--rust);
+    font-weight: 700;
+    font-style: normal;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Principle panel (closing prose, sits above Figure 5)
+     ─────────────────────────────────────────────────────────── */
+  .principle {
+    background: linear-gradient(135deg, var(--paper-2), var(--paper-3));
+    border: 1.5px solid var(--rust);
+    border-left: 5px solid var(--rust);
+    border-radius: 4px;
+    padding: 24px 28px;
+    margin: 28px 0 18px;
+  }
+  .principle .quote {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.375rem;
+    line-height: 1.4;
+    color: var(--ink);
+    margin: 0 0 14px;
+    font-weight: 700;
+  }
+  .principle p:not(.quote) {
+    font-size: 0.96875rem;
+    line-height: 1.65;
+    color: var(--ink);
+    margin: 0 0 12px;
+  }
+  .principle p:last-child { margin-bottom: 0; }
+
+  /* ─────────────────────────────────────────────────────────────
+     Figure 5 — Thesis specimen (typographic plate)
+     ─────────────────────────────────────────────────────────── */
+  .thesis-frame {
+    background: var(--paper-2);
+    border: 1.5px solid var(--ink);
+    border-left: 5px solid var(--rust);
+    padding: 80px 40px;
+    margin: 18px 0 0;
+    position: relative;
+    text-align: center;
+    background-image: radial-gradient(
+      circle,
+      rgba(31, 44, 32, 0.03) 1px,
+      transparent 1.2px
+    );
+    background-size: 18px 18px;
+  }
+  .thesis-frame .corner-tag {
+    position: absolute;
+    top: 14px; left: 18px;
+    font-family: var(--mono);
+    font-size: 0.59375rem;
+    color: var(--rust);
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .thesis-frame .corner-tag svg {
+    width: 18px;
+    height: 10px;
+    color: var(--rust);
+  }
+  .thesis-frame .thesis {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 2rem;
+    line-height: 1.3;
+    color: var(--ink);
+    font-weight: 700;
+    letter-spacing: -0.005em;
+  }
+  .thesis-frame .corner-tick {
+    position: absolute;
+    bottom: 14px; right: 18px;
+    font-family: var(--mono);
+    font-size: 0.59375rem;
+    color: var(--ink-soft);
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Right-rail dual panels (overrides default Post.astro toc)
+     ─────────────────────────────────────────────────────────── */
+  .rail {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: sticky;
+    top: 80px;
+  }
+  .rail-panel {
+    background: var(--paper-2);
+    border: 1.5px solid var(--ink);
+    border-radius: 4px;
+    padding: 16px 18px;
+  }
+  .rail-title {
+    font-family: var(--serif);
+    font-size: 0.6875rem;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--rust);
+    font-weight: 700;
+    margin-bottom: 12px;
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--ink-soft);
+  }
+  .rail-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+  }
+  .rail-list a {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 7px 0;
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 0.78125rem;
+    line-height: 1.4;
+    border-bottom: 1px dashed var(--ink-soft);
+    font-weight: 500;
+  }
+  .rail-list li:last-child a { border-bottom: none; }
+  .rail-list .marker {
+    color: var(--rust);
+    font-family: var(--serif);
+    font-weight: 700;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+    width: 22px;
+  }
+  .rail-list a:hover { color: var(--rust); }
+  .specimens-list a {
+    display: grid;
+    grid-template-columns: 50px 1fr;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+  }
+  .specimens-list .sp-tag {
+    color: var(--rust);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    font-size: 0.625rem;
+  }
+  .specimens-list .sp-desc {
+    font-style: italic;
+    color: var(--ink-soft);
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Mobile
+     ─────────────────────────────────────────────────────────── */
+  @media (max-width: 880px) {
+    .hero-specimen-block {
+      grid-template-columns: 1fr;
+      text-align: center;
+      gap: 14px;
+    }
+    .hero-specimen { margin: 0 auto; }
+    .spec-pair { grid-template-columns: 1fr; gap: 18px; }
+    .spec-pair .specimen:nth-child(1) .pop-section,
+    .spec-pair .specimen:nth-child(2) .pop-section { min-height: 0; }
+    .empty-fence-grid { grid-template-columns: 1fr; }
+    .thesis-frame { padding: 50px 24px; }
+    .thesis-frame .thesis { font-size: 1.5rem; }
+    .empty-arrow { display: none; }
+    .rail { position: static; }
+  }
+
+  @media (max-width: 560px) {
+    .blank-zone .blank-body { height: 140px; }
+    .blank-zone.filled .filled-body { height: auto; min-height: 140px; }
+    .lane-table table { font-size: 0.65625rem; }
+    .lane-table th, .lane-table td { padding: 5px 8px; }
+  }
+</style>
+
+<!-- _v6 — Negative Space Made Literal. Five typographic specimens. 2026-05_ -->
