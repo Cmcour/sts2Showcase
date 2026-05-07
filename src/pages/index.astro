@@ -19,7 +19,14 @@ const base = import.meta.env.BASE_URL;
       </svg>
     </div>
 
-    <p class="description">A documented learning journey: seven specialized RL models, trained sequentially with strategic co-training, solving the seven interdependent decision problems that make up a competitive Slay the Spire 2 run. Not a finished product — an expedition still underway.</p>
+    <div class="intro-grid">
+      <div class="intro-block">
+        <p><span class="intro-mark">What:</span> Reinforcement learning applied to Slay the Spire 2: train a bot to play, then surface optimal strategy from its policy.</p>
+      </div>
+      <div class="intro-block">
+        <p><span class="intro-mark">Why:</span> A personal-project sandbox to learn data and ML principles through practice.</p>
+      </div>
+    </div>
 
     <svg class="map-canvas" viewBox="0 0 1000 380" aria-hidden="true">
       <path d="M 50 350 Q 60 340, 70 330 C 92 315, 158 243, 200 240 C 242 237, 280 293, 320 310 C 360 328, 398 352, 440 345 C 482 338, 527 279, 570 270 C 613 261, 657 298, 700 290 C 743 282, 788 243, 830 220 C 872 197, 930 162, 950 150 L 950 360 L 50 360 Z" fill="var(--moss)" opacity=".15"/>
@@ -75,13 +82,48 @@ const base = import.meta.env.BASE_URL;
       <div class="scenic-stop"><span class="scenic-num">2</span><h2>The Mountain <span class="scenic-sub">(the game)</span></h2><p>A roguelike deck-building game. You climb sixteen floors per act, fighting enemies card-by-card and adding one new card to your deck after each combat. Rest sites, shops, and events branch off the path between fights. Decisions compound — one bad card pick early can cascade into a failed run thirty minutes later. High skill ceiling, active competitive community.</p></div>
       <div class="scenic-stop"><span class="scenic-num">3</span><h2>The Knot <span class="scenic-sub">(the challenge)</span></h2><p>Building a competitive Slay the Spire 2 AI means solving seven interdependent decision problems: combat, card picks, rest sites, shops, events, relics, and routing. Naive sequential training fails — a shop policy can't learn whether a card is worth 75 gold without a picker that already evaluates decks containing it, and the picker can't see late-act states without routing to get there. Train any one in isolation and you optimize against a stale version of every other.</p></div>
       <div class="scenic-stop"><span class="scenic-num">4</span><h2>The Route <span class="scenic-sub">(the approach)</span></h2><p>A documented attempt to teach an AI to play Slay the Spire 2 at a competitive level. Seven specialized reinforcement-learning models, one per decision surface a human navigates in a run, trained one at a time. Combat trains first as the foundation; every later model inherits its vocabulary of cards, relics, and enemies (frozen embedding warm-start) and trains its own encoder and heads on top. Eleven worker laptops generate the games; one central machine runs the PPO learners.</p></div>
-      <div class="scenic-stop"><span class="scenic-num">5</span><h2>Why I'm Climbing <span class="scenic-sub">(the motivation)</span></h2><p>I learn by doing. I picked this project because it gives me a sandbox across the full stack of an ML system — data analysis, frontend, data storage, distributed infrastructure — that I can push into whenever I'm ready. Right now my focus is entirely on the machine learning side. The choice of Slay the Spire 2 is honest: I love the game, most of its decisions don't have an obvious right answer, and I wanted to use RL to find out what the right answer actually is.</p></div>
+      <div class="scenic-stop"><span class="scenic-num">5</span><h2>Why I'm Climbing <span class="scenic-sub">(the motivation)</span></h2><p>It started during two weeks of PTO that I wanted to spend on a real side project — specifically, neural networks, the most fascinating mathematics I've come across. About 120 hours over those two weeks (coding, prompting, setup, documenting, research) got the framework standing and the first model training. I learn by doing. This project gives me a sandbox across the full stack of an ML system — data analysis, frontend, data storage, distributed infrastructure — that I can push into whenever I'm ready. Right now my focus is entirely on the machine learning side. The choice of Slay the Spire 2 is honest: I love the game, most of its decisions don't have an obvious right answer, and I wanted to use RL to find out what the right answer actually is.</p></div>
       <div class="scenic-stop"><span class="scenic-num">6</span><h2>Field Notes <span class="scenic-sub">(the site)</span></h2><p>AI agents do most of the work here: they propose topics, draft the articles, design the layouts, write the research papers, and build the quizzes. My job is to review their output at every stage and to study each paper until I know the topic at an industry level — not just at the level of my own codebase. Articles don't publish until I pass the quiz on the paper, so I'm not shipping anything I can't defend.</p></div>
     </div>
   </main>
 </Base>
 
 <style>
+  .intro-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 64px;
+    margin: 0 0 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px dashed var(--ink-soft);
+  }
+  .intro-block { position: relative; }
+  .intro-block:first-child::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    right: -32px;
+    border-left: 1px dashed var(--ink-soft);
+  }
+  .intro-block p {
+    font-size: 1rem;
+    line-height: 1.65;
+    color: var(--ink);
+  }
+  .intro-block p + p { margin-top: 12px; }
+  .intro-mark {
+    font-family: var(--serif);
+    font-weight: 700;
+    color: var(--rust);
+    font-size: 1.125rem;
+    letter-spacing: 0.02em;
+    margin-right: 6px;
+  }
+  @media (max-width: 880px) {
+    .intro-grid { grid-template-columns: 1fr; gap: 20px; }
+    .intro-block:first-child::after { display: none; }
+  }
   .map-canvas {
     margin: 0 auto 24px;
     width: 100%;

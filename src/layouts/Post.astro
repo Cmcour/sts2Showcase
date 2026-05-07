@@ -22,12 +22,12 @@ const { title, date, activeTab, category, readingTime, headings, stopNumber, sto
 const base = import.meta.env.BASE_URL;
 
 const tabHomes: Record<string, { href: string; label: string; defaultTrail: string }> = {
-  'learned': { href: `${base}learned/`, label: 'What I Learned', defaultTrail: 'field journal entry' },
+  'learned': { href: `${base}learned/`, label: 'Lessons Learned', defaultTrail: 'field journal entry' },
   'deep-dive': { href: `${base}deep-dive/`, label: 'Deep Dives', defaultTrail: 'technical trail' },
   'agent-architecture': { href: `${base}agent-architecture/`, label: 'Agent Architecture', defaultTrail: 'field equipment' },
 };
 const tabHome = tabHomes[activeTab] ?? { href: base, label: 'Home', defaultTrail: 'stop' };
-const resolvedCategory = category ?? tabHome.label.replace(/^What I /, '');
+const resolvedCategory = category ?? tabHome.label;
 const resolvedTrail = trailLabel ?? tabHome.defaultTrail;
 
 const fallbackHeadings: Heading[] = [
