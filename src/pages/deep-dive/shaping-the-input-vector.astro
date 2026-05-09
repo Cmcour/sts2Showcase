@@ -1,0 +1,1821 @@
+---
+import Post from '../../layouts/Post.astro';
+
+const headings = [
+  { text: 'The contract', id: 'contract' },
+  { text: 'The 18 scalars', id: 'scalars' },
+  { text: 'The hand', id: 'hand' },
+  { text: 'Enemies', id: 'enemies' },
+  { text: 'The piles', id: 'piles' },
+  { text: 'Relics & powers', id: 'trailing' },
+  { text: 'The action mask', id: 'mask' },
+  { text: 'Policy vs. human', id: 'vs-human' },
+  { text: 'Bought, and cost', id: 'bought' },
+];
+
+const exhibits = [
+  { tag: 'EX 1', name: 'scalars',     dim: '18'  },
+  { tag: 'EX 2', name: 'hand',        dim: '270' },
+  { tag: 'EX 3', name: 'enemies',     dim: '252' },
+  { tag: 'EX 4', name: 'pile pools',  dim: '24'  },
+  { tag: 'EX 5', name: 'trailing',    dim: '19'  },
+];
+const exhibitsOutput = [
+  { tag: 'EX 6', name: 'action mask', dim: '61'  },
+  { tag: 'EX 7', name: 'the full map', dim: '—' },
+];
+
+// Hero mini-mask cells: 60 cells with 4 highlighted (rust) per the v3 mockup
+const miniMaskCells = Array.from({ length: 60 }, (_, i) =>
+  [0, 5, 19, 59].includes(i) ? 'mh' : ''
+);
+---
+
+<Post
+  title="Shaping the Input Vector: What a Policy Network Actually Sees"
+  date="May 2026"
+  activeTab="deep-dive"
+  category="Deep Dive"
+  readingTime="~14 min hike"
+  headings={headings}
+  stopNumber="2"
+  stopTag="State Representation"
+  trailLabel="trailhead 2 · state representation"
+>
+  <div slot="aside">
+    <aside class="rail">
+      <div class="rail-panel">
+        <div class="rail-title">⟢ trail markers ⟣</div>
+        <ul class="rail-list">
+          {headings.map((h, i) => (
+            <li>
+              <a href={`#${h.id}`}>
+                <span class="marker">§{i + 1}</span>
+                <span>{h.text}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div class="rail-panel">
+        <div class="rail-title">⟢ exhibit index ⟣</div>
+        <div class="ex-index">
+          {exhibits.map(ex => (
+            <div class="ex-row">
+              <span class="ex-tag">{ex.tag}</span>
+              <span class="ex-name">{ex.name}</span>
+              <span class="ex-dim">{ex.dim}</span>
+            </div>
+          ))}
+          <div class="ex-divider">total trunk · 583</div>
+          {exhibitsOutput.map(ex => (
+            <div class="ex-row">
+              <span class="ex-tag">{ex.tag}</span>
+              <span class="ex-name">{ex.name}</span>
+              <span class="ex-dim">{ex.dim}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  {/* Hero icon strip — sits beneath the meta row inside the article body, since
+      Post.astro's signpost hero doesn't expose a slot for the right side */}
+  <div class="hero-icon-strip">
+    <div class="badge-line">deep dive · stop 2 · model.py · 7 exhibits</div>
+    <div class="hero-icon-wrap">
+      <div class="mini-mask">
+        <div class="mm-end">0</div>
+        <div class="mm-grid">
+          {miniMaskCells.map(c => <div class={c}></div>)}
+        </div>
+      </div>
+      <div class="hero-icon-cap">[ 61 bits · output side ]</div>
+    </div>
+  </div>
+
+  <p class="lede">The bridge solved the question of whether a Python policy could see the game at all. The next question was what, exactly, it should see — and in what shape.</p>
+
+  <p>The C# side ships a JSON dict with maybe forty keys at the top level and arbitrarily long lists inside it. The policy is a fixed-shape MLP that wants a <code>[B, 583]</code> float tensor and a <code>[B, 61]</code> boolean action mask. Everything between those two ends is encoding policy.</p>
+
+  <p>This is the article about that encoding. It lives in <code>src/bot/model.py</code> — <code>EncodedState</code>, <code>encode_state()</code>, and the small set of constants at the top of the file that pin down every dimension the network ever sees. The decisions are dense: which fields get their own scalar slot, which get folded into a learned embedding, which get mean-pooled into a bag of features, which get padded to a fixed length and which get clamped at a tail. Most of those decisions started somewhere else and got dragged into their current shape one blindspot at a time.</p>
+
+  <h2 id="contract"><span class="num">§ 1</span>The contract — 583 floats and 61 booleans</h2>
+  <svg class="under" viewBox="0 0 90 8" aria-hidden="true"><path d="M 2 4 Q 18 1, 32 5 T 60 3 T 86 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+
+  <div class="exhibit-index">
+    <div class="ei-bar">⟢ exhibit index ⟣</div>
+    <ul>
+      <li><span class="ei-num">EXHIBIT 1</span><span class="ei-dim">18 dims</span><span class="ei-name">the scalar block</span></li>
+      <li><span class="ei-num">EXHIBIT 2</span><span class="ei-dim">270 dims</span><span class="ei-name">the hand block</span></li>
+      <li><span class="ei-num">EXHIBIT 3</span><span class="ei-dim">252 dims</span><span class="ei-name">the enemy block</span></li>
+      <li><span class="ei-num">EXHIBIT 4</span><span class="ei-dim">24 dims</span><span class="ei-name">the pile pools</span></li>
+      <li><span class="ei-num">EXHIBIT 5</span><span class="ei-dim">19 dims</span><span class="ei-name">the trailing pools (relics + powers)</span></li>
+      <li class="ei-divider">— sums to 583 trunk-input dims —</li>
+      <li><span class="ei-num">EXHIBIT 6</span><span class="ei-dim">61 bits</span><span class="ei-name">the action mask · output side</span></li>
+      <li><span class="ei-num">EXHIBIT 7</span><span class="ei-dim">—</span><span class="ei-name">the full map · closer</span></li>
+    </ul>
+  </div>
+
+  <p>The shape is fixed at the constants block of <code>model.py</code>:</p>
+
+  <div class="codeblock">
+    <div class="code-file">src/bot/model.py · constants</div>
+<pre><code>{`MAX_HAND      = 10
+MAX_TARGETS   = 6
+MAX_RELICS    = 20
+MAX_DRAW      = 30
+MAX_DISCARD   = 30
+MAX_EXHAUST   = 30
+MAX_POWERS    = 15
+MAX_ACTIONS   = 1 + MAX_HAND * MAX_TARGETS  # 61
+
+CARD_EMB_DIM  = 16
+ENEMY_EMB_DIM = 16
+RELIC_EMB_DIM = 8
+PILE_EMB_DIM  = 8
+POWER_EMB_DIM = 8
+HIDDEN_DIM    = 256`}</code></pre>
+  </div>
+
+  <p>Worked end-to-end, the trunk consumes:</p>
+
+  <ul>
+    <li><strong>18</strong> scalar floats for the player and turn</li>
+    <li><strong>270</strong> floats for the hand (10 cards × (16-dim card embedding + 11 extra features))</li>
+    <li><strong>252</strong> floats for enemies (6 enemies × (16-dim enemy embedding + 17 scalars + 9-dim mean-pooled per-enemy power slot))</li>
+    <li><strong>24</strong> floats for the three piles, each compressed to an 8-dim mean-pooled bag</li>
+    <li><strong>10</strong> floats for the mean-pooled relic pool (8-dim embedding + 2 scalars)</li>
+    <li><strong>9</strong> floats for the mean-pooled player generic-power pool</li>
+  </ul>
+
+  <p>That is 583 features into the trunk, two layers of <code>Linear → LayerNorm → ReLU</code> at width 256, then three heads: a 61-way policy logit head, a scalar value head, and a 10-way discard-priority head. Every choice in the encoder is constrained by that shape contract. If hands had a hard maximum of 12 instead of 10, the policy head would be 73-way instead of 61-way. If enemies had 7 slots instead of 6, the trunk input would be 625 instead of 583. None of these are inferable from a JSON dict; they are bets, and changing one of them is a network rebuild.</p>
+
+  <p><code>MAX_HAND=10</code> is a generous bound on a typical Silent hand. <code>MAX_TARGETS=6</code> is one slot more than any combat the curriculum currently runs. <code>MAX_RELICS=20</code> is well above any realistic mid-act inventory. <code>MAX_DRAW=30</code> and friends are deliberately tight: the bot's training decks rarely hit 30 cards in a single pile, and the network would rather not budget for long-tail draws it never sees.</p>
+
+  <p>The thing that surprised me, in retrospect, is how little of the 583 is the part that "feels like" the game state. The 18 scalars cover the bookkeeping a player tracks at a glance — HP, block, energy, pile sizes, debuff stacks. The other 565 floats are almost entirely cards: 10 cards in hand, 90 anonymous cards across three piles, plus a small allowance for relic and power identities. The policy spends an order of magnitude more of its input width on "what is in your deck right now" than on "how is your character doing." That ratio matches the game — Slay-style deckbuilders are about the deck, not the character — but it took building the encoder to feel that in the dimensions.</p>
+
+  <h2 id="scalars"><span class="num">§ 2</span>The 18 scalars — where every "weird" decision lives</h2>
+
+  <p>The scalar block is the most decisional sliver of the input. Eighteen floats, each a deliberate choice about what shape the network can recognize. Pulled straight from <code>encode_state</code>:</p>
+
+  <div class="codeblock">
+    <div class="code-file">src/bot/model.py · encode_state · scalars</div>
+<pre><code>{`scalars = torch.tensor([[
+    player["hp"]     / max(player["max_hp"], 1),
+    player["block"]  / max(player["max_hp"], 1),
+    player["energy"] / max(player["max_energy"], 1),
+    state.get("draw_size", 0) / 30.0,
+    state.get("discard_size", 0) / 30.0,
+    state.get("exhaust_size", 0) / 30.0,
+    min(turn, 20) / 20.0,
+    len(hand) / MAX_HAND,
+    _norm(player.get("strength", 0),   -300, 300),
+    _norm(player.get("dexterity", 0),   -50,  50),
+    _norm(player.get("vulnerable", 0),    0, 300),
+    _norm(player.get("weak", 0),          0,  50),
+    _norm(player.get("frail", 0),         0, 100),
+    _norm(player.get("intangible", 0),    0,  20),
+    _norm(player.get("thorns", 0),        0,  50),
+    _norm(player.get("attacks_played", 0), 0, 10),
+    _norm(player.get("skills_played", 0),  0, 10),
+    _norm(player.get("powers_played", 0),  0,  5),
+]], dtype=torch.float32)`}</code></pre>
+  </div>
+
+  <figure class="fig">
+    <div class="exhibit">
+      <div class="exhibit-bar">
+        <span class="file">model.py · scalars [B, 18]</span>
+        <span class="num-pill">EXHIBIT 1</span>
+      </div>
+      <div class="exhibit-body">
+        <div class="scalar-3x6">
+          <div class="scalar-cell"><div class="lbl">hp_frac</div><div class="frm">/max_hp</div></div>
+          <div class="scalar-cell"><div class="lbl">block_frac</div><div class="frm">/max_hp</div></div>
+          <div class="scalar-cell"><div class="lbl">energy_frac</div><div class="frm">/max_e</div></div>
+          <div class="scalar-cell"><div class="lbl">draw_frac</div><div class="frm">/30</div></div>
+          <div class="scalar-cell"><div class="lbl">discard_frac</div><div class="frm">/30</div></div>
+          <div class="scalar-cell"><div class="lbl">exhaust_frac</div><div class="frm">/30</div></div>
+          <div class="scalar-cell dec"><div class="lbl">turn_norm</div><div class="frm">min(t,20)/20</div></div>
+          <div class="scalar-cell"><div class="lbl">hand_frac</div><div class="frm">/MAX_HAND</div></div>
+          <div class="scalar-cell dec"><div class="lbl">strength</div><div class="frm">_norm(±300)</div></div>
+          <div class="scalar-cell"><div class="lbl">dexterity</div><div class="frm">_norm(±50)</div></div>
+          <div class="scalar-cell"><div class="lbl">vulnerable</div><div class="frm">_norm(0,300)</div></div>
+          <div class="scalar-cell dec"><div class="lbl">weak</div><div class="frm">_norm(0,50)</div></div>
+          <div class="scalar-cell"><div class="lbl">frail</div><div class="frm">_norm(0,100)</div></div>
+          <div class="scalar-cell"><div class="lbl">intangible</div><div class="frm">_norm(0,20)</div></div>
+          <div class="scalar-cell"><div class="lbl">thorns</div><div class="frm">_norm(0,50)</div></div>
+          <div class="scalar-cell"><div class="lbl">attacks_p</div><div class="frm">_norm(0,10)</div></div>
+          <div class="scalar-cell"><div class="lbl">skills_p</div><div class="frm">_norm(0,10)</div></div>
+          <div class="scalar-cell"><div class="lbl">powers_p</div><div class="frm">_norm(0,5)</div></div>
+        </div>
+      </div>
+      <div class="exhibit-side">
+        <div class="placard-title">Decisional cells</div>
+        <ul>
+          <li><span class="bli-tag">BLI 8</span>turn_norm — saturated past turn 20.</li>
+          <li>strength — asymmetric <code class="placard-code">_norm</code>, anchored at 0.</li>
+          <li>weak — dedicated, not pooled. 25% damage debuff is too load-bearing for a bag.</li>
+        </ul>
+      </div>
+    </div>
+    <figcaption class="fig-caption"><span class="figtag">Exhibit 1</span>Eighteen floats. Three decisions worth defending.</figcaption>
+  </figure>
+
+  <p>The first six are obvious — fractions in <code>[0, 1]</code>. The seventh is the one I want to flag: <code>min(turn, 20) / 20.0</code>. Turn number saturates at 20. This is a known blindspot, written up explicitly in <code>docs/blindspot.md</code> (#8). Any combat past turn 20 looks identical to the network. The reason it's still there is reward-side: the per-turn penalty in <code>reward.py</code> already discourages dragging combats out, and the curriculum's combats almost never run that long. The cost of fixing it (longer encoding, more features near the tail of a long-tail distribution) wasn't worth the gain. Saturation is the right answer when the saturation point is past the support of the data.</p>
+
+  <p>The interesting decisions are below the fold, in the buff/debuff block. Five player buffs — Strength, Dexterity, Vulnerable, Weak, Frail — get their own dedicated scalar slot. Two combat counters (Intangible, Thorns) join them. Three turn-action counters (<code>attacks_played</code>, <code>skills_played</code>, <code>powers_played</code>) join those. Every other power on the player gets routed through the generic mean-pooled power slot at the end of the input — about which more in a moment.</p>
+
+  <p>The "should this power be dedicated or generic?" question is the one I revisited the most. The answer ended up being a small set rule: if a power's optimal-play implication is fundamentally different from "it's a number that goes up or down," it gets a dedicated scalar. Strength changes how every attack is valued. Vulnerable changes how every attack on the enemy is valued. Weak attaches a 25% damage debuff to my own attacks. These need precise visibility; the network can't afford to learn them through a noisy mean-pooled bag — and Strength, Dexterity, Vulnerable, Weak, Frail, Intangible, and Thorns are the seven the Python encoder currently consumes as their own scalar slots.</p>
+
+  <p>The C# <code>PlayerDedicated</code> set in <code>StateSerializer.cs</code> is actually wider than that. It also names <code>BarricadePower</code> and <code>BlurPower</code> — the block-persistence powers — because block-persistence fundamentally changes optimal play and the C# author (me, on a different day) didn't want them mean-pooled. But the Python encoder doesn't currently have scalar slots for <code>barricade</code> or <code>blur</code>. They get excluded from the generic pool by <code>PlayerDedicated</code>, so they are sent on the wire and then dropped on the floor at the encoder. This is the same pattern as the extra intent flags below, and the same pattern as <code>eternal</code> on cards: the C# schema runs ahead of the Python encoder, on the theory that adding fields C#-side is free and the encoder catches up when a curriculum stage actually needs them.</p>
+
+  <p>The non-obvious decision is <code>_norm</code>. Most ML codebases use a single <code>clamp_then_scale_to_[0,1]</code> helper. This one doesn't:</p>
+
+  <div class="codeblock">
+    <div class="code-file">src/bot/model.py · _norm</div>
+<pre><code>{`def _norm(val, lo, hi):
+    """
+    Clamp val to [lo, hi] and map to [lo/hi, 1.0].
+    When lo=0 the output is [0, 1].
+    When lo<0 (e.g. strength: lo=-300, hi=300) the output is [-1, 1] with
+    zero mapping to 0.0 — NOT to the midpoint of the range. That asymmetry
+    is intentional: positive and negative strength are each scaled by 1/hi.
+    """
+    return min(max(val, lo), hi) / hi`}</code></pre>
+  </div>
+
+  <p>The asymmetry matters. Strength can go negative (Flex's downside, Choke effects, Decay — Silent has a few). The naive normalization — <code>(val - lo) / (hi - lo)</code> — would map <code>strength=0</code> to <code>0.5</code>, the midpoint of the <code>[lo, hi]</code> interval. The network would then have to learn that <code>0.5</code> is "neutral" and that <code>&lt; 0.5</code> is "I am weakened." That's solvable with enough samples, but it makes the gradient on a feature that should be massively load-bearing pass through a learned bias near <code>0.5</code>. With the asymmetric <code>_norm</code>, <code>strength=0</code> is a literal zero in the input vector. <code>strength=+5</code> is <code>+5/300 = 0.0166</code>. <code>strength=-5</code> is <code>-0.0166</code>. Zero is anchored. The network gets the sign of strength for free, the magnitude in the right scale, and doesn't have to spend any capacity on "where is neutral."</p>
+
+  <p>It's a tiny thing — six characters of code, one division, no clamp — and it's the difference between a network that knows it has negative Strength and one that thinks zero-Strength is half-bad.</p>
+
+  <h2 id="hand"><span class="num">§ 3</span>The hand — padded, embedded, and 11 extra features per card</h2>
+
+  <p>The hand is the densest part of the input. Each of <code>MAX_HAND=10</code> slots gets:</p>
+
+  <ul>
+    <li>A 16-dim learned card embedding, looked up via <code>card_vocab.index("StrikeSilent")</code> or <code>card_vocab.index("StrikeSilent+")</code> for an upgraded copy.</li>
+    <li>11 extra scalar features per card: cost (normalized by 3), upgraded flag, three card-type one-hots (attack/skill/power), an x-cost flag, and five keyword flags (exhaust, ethereal, innate, retain, sly).</li>
+    <li>A <code>card_mask</code> slot that is <code>1.0</code> for a real card and <code>0.0</code> for a padding slot — used to zero out padding contributions before the trunk concat.</li>
+  </ul>
+
+  <figure class="fig">
+    <div class="exhibit">
+      <div class="exhibit-bar">
+        <span class="file">model.py · hand [B, 10, 27]</span>
+        <span class="num-pill">EXHIBIT 2</span>
+      </div>
+      <div class="exhibit-body">
+        <div class="slot-detail-cap">⟢ ONE SLOT — 27 FLOATS ⟣</div>
+        <div class="slot-detail">
+          <div class="slot-cell emb"><div class="lbl">e0</div></div>
+          <div class="slot-cell emb"><div class="lbl">e1</div></div>
+          <div class="slot-cell emb"><div class="lbl">e2</div></div>
+          <div class="slot-cell emb"><div class="lbl">e3</div></div>
+          <div class="slot-cell emb"><div class="lbl">e4</div></div>
+          <div class="slot-cell emb"><div class="lbl">e5</div></div>
+          <div class="slot-cell emb"><div class="lbl">e6</div></div>
+          <div class="slot-cell emb"><div class="lbl">e7</div></div>
+          <div class="slot-cell emb"><div class="lbl">e8</div></div>
+          <div class="slot-cell emb"><div class="lbl">e9</div></div>
+          <div class="slot-cell emb"><div class="lbl">e10</div></div>
+          <div class="slot-cell emb"><div class="lbl">e11</div></div>
+          <div class="slot-cell emb"><div class="lbl">e12</div></div>
+          <div class="slot-cell emb"><div class="lbl">e13</div></div>
+          <div class="slot-cell emb"><div class="lbl">e14</div></div>
+          <div class="slot-cell emb"><div class="lbl">e15</div></div>
+          <div class="slot-cell scalar"><div class="lbl">cost</div></div>
+          <div class="slot-cell scalar"><div class="lbl">upg</div></div>
+          <div class="slot-cell scalar"><div class="lbl">atk</div></div>
+          <div class="slot-cell scalar"><div class="lbl">skl</div></div>
+          <div class="slot-cell scalar"><div class="lbl">pow</div></div>
+          <div class="slot-cell scalar"><div class="lbl">xc</div></div>
+          <div class="slot-cell scalar bli"><div class="lbl">exh</div></div>
+          <div class="slot-cell scalar bli"><div class="lbl">eth</div></div>
+          <div class="slot-cell scalar bli"><div class="lbl">inn</div></div>
+          <div class="slot-cell scalar bli"><div class="lbl">ret</div></div>
+          <div class="slot-cell scalar bli"><div class="lbl">sly</div></div>
+        </div>
+        <div class="slot-stack">
+          <div class="slot-stack-cap">⟢ × 10 SLOTS = 270 DIMS ⟣</div>
+          <div class="slot-stack-row">
+            <div class="mini-slot-wrap"><div class="mini-slot"><div class="mse"></div><div class="mss"></div></div><div class="mini-slot-lb">slot 0 · 1</div></div>
+            <div class="mini-slot-wrap"><div class="mini-slot"><div class="mse"></div><div class="mss"></div></div><div class="mini-slot-lb">slot 1 · 1</div></div>
+            <div class="mini-slot-wrap"><div class="mini-slot"><div class="mse"></div><div class="mss"></div></div><div class="mini-slot-lb">slot 2 · 1</div></div>
+            <div class="mini-slot-wrap"><div class="mini-slot"><div class="mse"></div><div class="mss"></div></div><div class="mini-slot-lb">slot 3 · 1</div></div>
+            <div class="mini-slot-wrap"><div class="mini-slot"><div class="mse"></div><div class="mss"></div></div><div class="mini-slot-lb">slot 4 · 1</div></div>
+            <div class="mini-slot-wrap"><div class="mini-slot padded"><div class="mse"></div><div class="mss"></div></div><div class="mini-slot-lb">slot 5 · 0</div></div>
+            <div class="mini-slot-wrap"><div class="mini-slot padded"><div class="mse"></div><div class="mss"></div></div><div class="mini-slot-lb">slot 6 · 0</div></div>
+            <div class="mini-slot-wrap"><div class="mini-slot padded"><div class="mse"></div><div class="mss"></div></div><div class="mini-slot-lb">slot 7 · 0</div></div>
+            <div class="mini-slot-wrap"><div class="mini-slot padded"><div class="mse"></div><div class="mss"></div></div><div class="mini-slot-lb">slot 8 · 0</div></div>
+            <div class="mini-slot-wrap"><div class="mini-slot padded"><div class="mse"></div><div class="mss"></div></div><div class="mini-slot-lb">slot 9 · 0</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="exhibit-side">
+        <div class="placard-title">5 keyword flags</div>
+        <ul>
+          <li><strong>exhaust</strong> — changes deck composition.</li>
+          <li><strong>ethereal</strong> — must-play-or-lose.</li>
+          <li><strong>innate</strong> — opening-hand distribution.</li>
+          <li><strong>retain</strong> — turn-end discard.</li>
+          <li><strong>sly</strong> — Silent's discard-payoff trigger. <em>Not</em> the end-of-turn keyword.</li>
+        </ul>
+        <div class="placard-title placard-title-spaced">on the wire, dropped</div>
+        <ul>
+          <li><span class="bli-tag">→</span>target_type</li>
+          <li><span class="bli-tag">→</span>eternal</li>
+          <li><span class="bli-tag">→</span>damage (redundant)</li>
+        </ul>
+      </div>
+    </div>
+    <figcaption class="fig-caption"><span class="figtag">Exhibit 2</span>One slot in detail, then ten of them stacked. The 11 extras carry the side-channel of fixed mechanics — Strike+ deals 9, but the fact that Strike is a 1-cost attack is hardcoded.</figcaption>
+  </figure>
+
+  <p>The 11 extras are a direct response to blindspot #4 in <code>docs/blindspot.md</code>: "Card identity without effects." A pure embedding lookup forces the network to re-learn card mechanics from scratch every time vocab grows. Adding <code>[cost, is_attack, is_skill, is_power, x_cost, ...]</code> alongside the embedding gives the network a side-channel of fixed mechanics that doesn't need to be re-learned per card. Strike+ deals 9 instead of 6, and the embedding has to learn that — but the fact that Strike is a 1-cost attack is hardcoded in the extras and applies to every attack the bot ever sees.</p>
+
+  <p>The keyword flags are the slot that gets the most "wait, why that one and not this one" questions. The five chosen — exhaust, ethereal, innate, retain, sly — each change optimal play in a way the embedding can't easily recover from generic experience:</p>
+
+  <ul>
+    <li><strong>exhaust</strong> changes deck composition for the rest of the combat.</li>
+    <li><strong>ethereal</strong> is a "you must play this turn or lose it" forcing function.</li>
+    <li><strong>innate</strong> changes the opening-hand distribution.</li>
+    <li><strong>retain</strong> changes turn-end discard.</li>
+    <li><strong>sly</strong> is the trigger for Silent's discard-payoff cards (Acrobatics, Calculated Gamble) — the "play me, then discard me, then replay me" loop. Worth noting: the dataclass comment in <code>EncodedState</code> calls this out explicitly because Sly is <em>not</em> the end-of-turn-discard keyword. That is Ethereal. The naming overlap is a Slay-the-Spire trap I personally walked into and added the comment to keep myself from re-walking into it next time.</li>
+  </ul>
+
+  <p>Notably absent: damage. The card embedding doesn't get a <code>damage</code> scalar feature. This is deliberate — damage is upgrade- and condition-dependent (an attack's effective damage scales with Strength, gets halved by Weak, doubled by Vulnerable on the target, etc.) and the network has all the information needed to compute it from the embedding plus the player/enemy state. Putting "raw card damage" in the input would be either redundant (vs. the embedding) or wrong (vs. effective damage). Drop it.</p>
+
+  <p>The C# side does send a <code>target_type</code> field for each card in <code>StateSerializer.cs</code> (e.g. <code>AnyEnemy</code>, <code>Self</code>, <code>AllEnemies</code>) but the Python side doesn't currently consume it. Targeting constraints are enforced by the action mask (only legal <code>(card, target)</code> pairs are unmasked), so the network learns what targets each card permits implicitly through the legal-action mask. That isn't the cleanest factorization — making targeting an explicit input feature would let the network reason about it before the mask reaches the policy head — but it's correct, and the mask carries the same information through a different channel.</p>
+
+  <p>The hand layout flattens to <code>B × MAX_HAND × (CARD_EMB_DIM + 11) = B × 10 × 27 = B × 270</code>. That single block is 46% of the trunk input. The hand carries the most decisional weight per turn — what to play, in what order, against whom — and the input width reflects that.</p>
+
+  <h2 id="enemies"><span class="num">§ 4</span>Enemies — 6 slots, 17 scalars, 9-dim power pool, no positional information</h2>
+
+  <p>Enemies follow the same pattern as the hand — pad to <code>MAX_TARGETS=6</code>, embed the ID into 16 dimensions, attach a fixed-size scalar block per enemy. The scalar block is bigger here: 17 features.</p>
+
+  <div class="codeblock">
+    <div class="code-file">src/bot/model.py · encode_state · enemies</div>
+<pre><code>{`e_vals[0][i]  = e["hp"] / mhp
+e_vals[1][i]  = min(e.get("max_hp", 0), 1000) / 1000.0
+e_vals[2][i]  = e["block"] / mhp
+e_vals[3][i]  = min(e.get("intent_damage", 0), 50) / 50.0
+e_vals[4][i]  = min(e.get("intent_hits", 1), 10) / 10.0
+e_vals[5][i]  = _flag(e.get("intends_attack"))
+e_vals[6][i]  = _flag(e.get("intends_buff"))
+e_vals[7][i]  = _flag(e.get("intends_debuff"))
+e_vals[8][i]  = _flag(e.get("intends_block"))
+e_vals[9][i]  = _norm(e.get("vulnerable", 0), 0, 300)
+e_vals[10][i] = _norm(e.get("weak", 0), 0, 50)
+e_vals[11][i] = min(e.get("poison", 0), 200) / 200.0
+e_vals[12][i] = _norm(e.get("strength", 0), -300, 300)
+e_vals[13][i] = _norm(e.get("artifact", 0), 0, 30)
+e_vals[14][i] = _norm(e.get("intangible", 0), 0, 20)
+e_vals[15][i] = _norm(e.get("thorns", 0), 0, 50)
+e_vals[16][i] = _norm(e.get("ritual", 0), 0, 5)`}</code></pre>
+  </div>
+
+  <figure class="fig">
+    <div class="exhibit">
+      <div class="exhibit-bar">
+        <span class="file">model.py · enemies [B, 6, 42]</span>
+        <span class="num-pill">EXHIBIT 3</span>
+      </div>
+      <div class="exhibit-body">
+        <div class="slot-detail-cap">⟢ ONE ENEMY SLOT — 42 FLOATS ⟣</div>
+        <div class="slot-detail">
+          <div class="slot-cell emb"><div class="lbl">e0</div></div>
+          <div class="slot-cell emb"><div class="lbl">e1</div></div>
+          <div class="slot-cell emb"><div class="lbl">…</div></div>
+          <div class="slot-cell emb"><div class="lbl">e15</div></div>
+          <div class="slot-cell scalar"><div class="lbl">hp</div></div>
+          <div class="slot-cell scalar"><div class="lbl">mhp</div></div>
+          <div class="slot-cell scalar"><div class="lbl">blk</div></div>
+          <div class="slot-cell scalar"><div class="lbl">idmg</div></div>
+          <div class="slot-cell scalar"><div class="lbl">ihit</div></div>
+          <div class="slot-cell scalar bli"><div class="lbl">iA</div></div>
+          <div class="slot-cell scalar bli"><div class="lbl">iBu</div></div>
+          <div class="slot-cell scalar bli"><div class="lbl">iDb</div></div>
+          <div class="slot-cell scalar bli"><div class="lbl">iBl</div></div>
+          <div class="slot-cell scalar"><div class="lbl">vln</div></div>
+          <div class="slot-cell scalar"><div class="lbl">wk</div></div>
+          <div class="slot-cell scalar"><div class="lbl">poi</div></div>
+          <div class="slot-cell scalar"><div class="lbl">str</div></div>
+          <div class="slot-cell scalar"><div class="lbl">art</div></div>
+          <div class="slot-cell scalar"><div class="lbl">itg</div></div>
+          <div class="slot-cell scalar"><div class="lbl">thn</div></div>
+          <div class="slot-cell scalar"><div class="lbl">rit</div></div>
+          <div class="slot-cell pool"><div class="lbl">p0</div></div>
+          <div class="slot-cell pool"><div class="lbl">p1</div></div>
+          <div class="slot-cell pool"><div class="lbl">p2</div></div>
+          <div class="slot-cell pool"><div class="lbl">p3</div></div>
+          <div class="slot-cell pool"><div class="lbl">p4</div></div>
+          <div class="slot-cell pool"><div class="lbl">p5</div></div>
+          <div class="slot-cell pool"><div class="lbl">p6</div></div>
+          <div class="slot-cell pool"><div class="lbl">p7</div></div>
+          <div class="slot-cell pool"><div class="lbl">amt</div></div>
+        </div>
+        <div class="slot-stack">
+          <div class="slot-stack-cap">⟢ × 6 SLOTS = 252 DIMS ⟣</div>
+          <div class="slot-stack-row">
+            <div class="mini-slot-wrap"><div class="mini-slot enemy"><div class="mse"></div><div class="mss"></div><div class="msp"></div></div><div class="mini-slot-lb">slot 0 · 1</div></div>
+            <div class="mini-slot-wrap"><div class="mini-slot enemy"><div class="mse"></div><div class="mss"></div><div class="msp"></div></div><div class="mini-slot-lb">slot 1 · 1</div></div>
+            <div class="mini-slot-wrap"><div class="mini-slot enemy"><div class="mse"></div><div class="mss"></div><div class="msp"></div></div><div class="mini-slot-lb">slot 2 · 1</div></div>
+            <div class="mini-slot-wrap"><div class="mini-slot enemy padded"><div class="mse"></div><div class="mss"></div><div class="msp"></div></div><div class="mini-slot-lb">slot 3 · 0</div></div>
+            <div class="mini-slot-wrap"><div class="mini-slot enemy padded"><div class="mse"></div><div class="mss"></div><div class="msp"></div></div><div class="mini-slot-lb">slot 4 · 0</div></div>
+            <div class="mini-slot-wrap"><div class="mini-slot enemy padded"><div class="mse"></div><div class="mss"></div><div class="msp"></div></div><div class="mini-slot-lb">slot 5 · 0</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="exhibit-side">
+        <div class="placard-title"><span class="bli-tag">BLI 1</span>intent flags</div>
+        <ul>
+          <li>4 flags fixed the longest-running blindspot.</li>
+          <li>v0 sent only intent_damage.</li>
+          <li>Blind to Weak as a defensive move.</li>
+        </ul>
+        <div class="placard-title placard-title-spaced">power sub-pool</div>
+        <ul>
+          <li>9 dims at the tail.</li>
+          <li>Per-enemy mean-pool of non-dedicated powers.</li>
+          <li><span class="bli-tag">BLI 3</span>fixed enemy-power blindness.</li>
+        </ul>
+        <div class="placard-title placard-title-spaced">no positional info</div>
+        <ul>
+          <li>Stable per turn, not across turns.</li>
+        </ul>
+      </div>
+    </div>
+    <figcaption class="fig-caption"><span class="figtag">Exhibit 3</span>One enemy in detail. Six slots stack to make 252. The four rust-bordered cells are the intent flags — BLI-1's fix.</figcaption>
+  </figure>
+
+  <p>Three observations.</p>
+
+  <p>First, <code>enemy_max_hp_norm</code> exists alongside <code>enemy_hp_frac</code>. This is a small but load-bearing redundancy. <code>hp_frac</code> is <code>hp / max_hp</code> — it tells the network "is this enemy near death." <code>max_hp_norm</code> is <code>min(max_hp, 1000) / 1000</code> — it tells the network "is this enemy a chump or a boss." Without the second feature, a 5-HP-out-of-10 cultist and a 100-HP-out-of-200 elite look identical to the network. With it, they don't. The <code>min(., 1000)</code> clamp is a saturation choice, the same shape as the turn cap: nothing past 1000 max HP is meaningfully distinguishable from anything else past 1000 max HP, so cap it and stop spending input bandwidth.</p>
+
+  <p>Second, the four <code>intends_*</code> flags are the fix for blindspot #1, the one with the longest history. The first version of <code>encode_state</code> sent only <code>intent_damage</code> — a single float per enemy. The network was excellent at "the enemy will hit me for X." It was completely blind to "the enemy will do nothing visible-as-damage but will Weak me, halving my next turn's attacks." The fix wasn't subtle: add <code>intends_attack</code>, <code>intends_buff</code>, <code>intends_debuff</code>, <code>intends_block</code> as four binary flags. The C# side already had the IntentType enum; it was just being thrown away on the Python side. (<code>StateSerializer.cs</code> actually now sends nine more <code>intends_*</code> flags — Summon, Sleep, Heal, CardDebuff, StatusCard, DeathBlow, Stun, Escape, Hidden — but the encoder currently consumes the four canonical ones. The richer set is shipped because adding them on the C# side is free and they may become consumed in a later curriculum stage; right now they pass through the wire and are dropped at the encoder.)</p>
+
+  <p>Third — and this is the one that's easy to miss — enemies don't have positional information. The slot a given enemy occupies in the <code>enemies[]</code> array is whatever order <code>combatState.HittableEnemies</code> returns them in. The network doesn't know "the Cultist on the left" vs. "the Cultist on the right" — it only knows "two Cultists, in some order." This is mostly fine because Slay-style combat is positionally invariant (positioning matters for a few specific enemies and a small set of cards, but most of the time the targeting is by-index-within-the-fight, not by-physical-slot). The action mask pairs each <code>(card_idx, target_idx)</code> pair with the enemy at that target index in this turn's state, so as long as the order is stable within a turn, the network gets a consistent signal. It's not stable across turns when enemies die — the survivors shift left — but the network sees a fresh state per turn anyway, so the consistency window is exactly one decision.</p>
+
+  <p>The 9-dim per-enemy generic-power pool sits at the end of each enemy's slot. Eight dimensions are the mean-pooled embedding of all non-dedicated powers on that enemy (Curl Up, Anger, Mode Shift, Ritual when not separately surfaced, etc.). The ninth is the mean-pooled normalized amount across those powers. This is the fix for blindspot #3 — enemy powers were originally invisible. The fix isn't to enumerate every enemy power into its own scalar (the long tail is enormous; there's a power for every quirky monster in the game) — it's to give the network a learned embedding table for power IDs and let it pool the active ones into a fixed-size summary. Same trick the piles use, scaled down.</p>
+
+  <p>The whole enemy block flattens to <code>B × MAX_TARGETS × (16 + 17 + 9) = B × 6 × 42 = B × 252</code>. Padding slots are zeroed via <code>enemy_mask</code> so they contribute nothing to the trunk. A single-enemy fight still pays the full 252 dimensions; the trunk handles the masking with a multiply, not a shape change.</p>
+
+  <h2 id="piles"><span class="num">§ 5</span>The piles — bag-of-IDs, mean-pooled, no order</h2>
+
+  <p>The draw, discard, and exhaust piles are the place where the encoding choice differs most from the hand. Piles are encoded as bags. Each pile gets its own padded ID array (<code>MAX_DRAW=30</code>, <code>MAX_DISCARD=30</code>, <code>MAX_EXHAUST=30</code>), each ID is looked up in a separate <code>pile_emb</code> embedding table (8-dim, smaller than the hand's <code>card_emb</code> because the network needs less per-card resolution for cards it isn't currently making decisions about), and then the whole pile is mean-pooled into a single 8-dim vector before it ever reaches the trunk:</p>
+
+  <div class="codeblock">
+    <div class="code-file">src/bot/model.py · _pool_pile</div>
+<pre><code>{`def _pool_pile(ids, mask):
+    emb = self.pile_emb(ids) * mask.unsqueeze(-1)
+    return emb.sum(dim=1) / mask.sum(dim=-1, keepdim=True).clamp(min=1)
+
+draw_pool = _pool_pile(enc.draw_ids,    enc.draw_mask)
+disc_pool = _pool_pile(enc.discard_ids, enc.discard_mask)
+exh_pool  = _pool_pile(enc.exhaust_ids, enc.exhaust_mask)`}</code></pre>
+  </div>
+
+  <figure class="fig">
+    <div class="exhibit">
+      <div class="exhibit-bar">
+        <span class="file">model.py · pile_pools [B, 24]</span>
+        <span class="num-pill">EXHIBIT 4</span>
+      </div>
+      <div class="exhibit-body">
+        <div class="pool-diagram-multi">
+          <div class="pool-diagram">
+            <div class="pool-bucket">
+              <div class="bucket-title">DRAW · ≤30 IDs</div>
+              <div class="bucket-ids">Strike, Defend, Strike+, Survivor, Backflip, Strike, Defend+, Acrobatics, …</div>
+            </div>
+            <div class="pool-op">
+              <div class="diamond"><div class="diamond-inner">Σ emb(id)<br/>/ N</div></div>
+              <div class="op-lb">mean-pool</div>
+            </div>
+            <div class="pool-output">
+              <div class="pool-output-lb">DRAW POOL · 8</div>
+              <div class="pool-output-cells">
+                <div class="pc">d0</div><div class="pc">d1</div><div class="pc">d2</div><div class="pc">d3</div><div class="pc">d4</div><div class="pc">d5</div><div class="pc">d6</div><div class="pc">d7</div>
+              </div>
+            </div>
+          </div>
+          <div class="pool-diagram">
+            <div class="pool-bucket">
+              <div class="bucket-title">DISCARD · ≤30 IDs</div>
+              <div class="bucket-ids">Strike, Defend, Defend+, Strike+, Strike, Survivor, …</div>
+            </div>
+            <div class="pool-op">
+              <div class="diamond"><div class="diamond-inner">Σ emb(id)<br/>/ N</div></div>
+              <div class="op-lb">mean-pool</div>
+            </div>
+            <div class="pool-output">
+              <div class="pool-output-lb">DISCARD POOL · 8</div>
+              <div class="pool-output-cells">
+                <div class="pc">x0</div><div class="pc">x1</div><div class="pc">x2</div><div class="pc">x3</div><div class="pc">x4</div><div class="pc">x5</div><div class="pc">x6</div><div class="pc">x7</div>
+              </div>
+            </div>
+          </div>
+          <div class="pool-diagram">
+            <div class="pool-bucket">
+              <div class="bucket-title">EXHAUST · ≤30 IDs</div>
+              <div class="bucket-ids">Bane, Apparition, Adrenaline, …</div>
+            </div>
+            <div class="pool-op">
+              <div class="diamond"><div class="diamond-inner">Σ emb(id)<br/>/ N</div></div>
+              <div class="op-lb">mean-pool</div>
+            </div>
+            <div class="pool-output">
+              <div class="pool-output-lb">EXHAUST POOL · 8</div>
+              <div class="pool-output-cells">
+                <div class="pc">h0</div><div class="pc">h1</div><div class="pc">h2</div><div class="pc">h3</div><div class="pc">h4</div><div class="pc">h5</div><div class="pc">h6</div><div class="pc">h7</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="exhibit-side">
+        <div class="placard-title"><span class="bli-tag">BLI 6</span>composition only</div>
+        <ul>
+          <li>Order — collapsed.</li>
+          <li>Multiplicity — collapsed.</li>
+          <li>2nd-moment — collapsed.</li>
+        </ul>
+        <div class="placard-title placard-title-spaced">deferred fix</div>
+        <ul>
+          <li>+9 dims for per-pile bag-of-types histogram.</li>
+          <li>Trunk grows 583 → 592.</li>
+          <li>Network rebuild — held.</li>
+        </ul>
+      </div>
+    </div>
+    <figcaption class="fig-caption"><span class="figtag">Exhibit 4</span>Ninety cards in, twenty-four floats out. The mean-pool is the single biggest information-density trade in the encoder.</figcaption>
+  </figure>
+
+  <p>So the network sees three 8-dim vectors — one per pile — describing the average card identity in each pile. Not the order. Not the count. The count was originally encoded as the pile-size scalars at the top of the input (<code>draw_size</code>, <code>discard_size</code>, <code>exhaust_size</code>, each <code>/ 30</code>). The composition is the embedding pool. The network can in principle reconstruct "this pile has lots of attacks" from the pooled embedding even though attacks aren't a one-hot in the pool.</p>
+
+  <p>This is the single biggest "give up information density for shape stability" trade in the encoder. Mean-pooling collapses any distribution-of-cards signal into its first moment — the network can tell "this draw pile leans toward attacks" but it can't tell "this draw pile is half attacks half powers" from "this draw pile is all medium-attackiness cards." For real Slay-style play, the second moment matters. A 50/50 mix plays very differently from a uniform-medium deck.</p>
+
+  <p>The reason the encoding is mean-pooled anyway is blindspot #6 — pile composition was deferred to v1 by design. The original spec said draw-pile composition is "low value until the bot plays longer combats with larger decks." That call held up under early curriculum but is starting to bite at later stages, where deck size is larger and longer-horizon planning becomes valuable. The likely next iteration is a separate per-pile bag-of-types histogram (count of attacks, skills, powers per pile) appended to the pooled embedding — adds 9 dimensions total (3 pile types × 3 cardinality counts), keeps the shape contract stable.</p>
+
+  <p>The shape contract is the reason this iteration hasn't shipped yet. The current pile encoding is <code>8 dims × 3 piles = 24 dims</code>. Adding a 3-dim count vector per pile would push that to <code>8 + 3 = 11 per pile, 33 dims total</code>, which means the trunk input grows from 583 to 592, the first Linear layer's weight matrix has to change shape, and any checkpoint trained on the old shape stops loading. Embedding-table growth is graceful (<code>resize_embeddings()</code> preserves the learned rows and only random-inits the new ones); trunk-input dim growth is a network rebuild. Every time I revisit the pile encoding I weigh that cost against the marginal-information-per-checkpoint-rebuild and end up deferring again.</p>
+
+  <h2 id="trailing"><span class="num">§ 6</span>Relics and player powers — same shape, two scalars riding along</h2>
+
+  <p>Relics are mean-pooled the same way piles are, with two extra scalars per relic: the normalized counter (<code>DisplayAmount / 10</code>, capped) and an <code>active</code> flag. Slots are padded to <code>MAX_RELICS=20</code>, embedded into 8-dim with <code>relic_emb</code>, masked, and pooled to a single <code>8 + 2 = 10</code>-dim summary at the end of the trunk input.</p>
+
+  <figure class="fig">
+    <div class="exhibit">
+      <div class="exhibit-bar">
+        <span class="file">model.py · relic_pool + power_pool</span>
+        <span class="num-pill">EXHIBIT 5</span>
+      </div>
+      <div class="exhibit-body">
+        <div class="pool-diagram-multi">
+          <div class="pool-diagram">
+            <div class="pool-bucket">
+              <div class="bucket-title">RELICS · ≤20 IDs</div>
+              <div class="bucket-ids">{`{BurningBlood, c=0, active=1}, {NeowsLament, c=3}, {Anchor, active=1}, …`}</div>
+            </div>
+            <div class="pool-op">
+              <div class="diamond"><div class="diamond-inner">Σ emb(id)<br/>/ N</div></div>
+              <div class="op-lb">mean-pool</div>
+            </div>
+            <div class="pool-output">
+              <div class="pool-output-lb">RELIC POOL · 10</div>
+              <div class="pool-output-cells">
+                <div class="pc">r0</div><div class="pc">r1</div><div class="pc">r2</div><div class="pc">r3</div><div class="pc">r4</div><div class="pc">r5</div><div class="pc">r6</div><div class="pc">r7</div>
+              </div>
+              <div class="pool-output-extra">+ counter<br/>+ active</div>
+            </div>
+          </div>
+          <div class="pool-diagram">
+            <div class="pool-bucket">
+              <div class="bucket-title">PLAYER POWERS · ≤15 IDs</div>
+              <div class="bucket-ids">Footwork=2, Envenom=1, Poison=4, …<br/><br/><em>(Strength / Vulnerable / Weak / Frail / Dexterity / Intangible / Thorns are dedicated scalars)</em></div>
+            </div>
+            <div class="pool-op">
+              <div class="diamond"><div class="diamond-inner">Σ emb(id)<br/>/ N</div></div>
+              <div class="op-lb">mean-pool</div>
+            </div>
+            <div class="pool-output">
+              <div class="pool-output-lb">POWER POOL · 9</div>
+              <div class="pool-output-cells">
+                <div class="pc">w0</div><div class="pc">w1</div><div class="pc">w2</div><div class="pc">w3</div><div class="pc">w4</div><div class="pc">w5</div><div class="pc">w6</div><div class="pc">w7</div>
+              </div>
+              <div class="pool-output-extra">+ mean amt</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="exhibit-side">
+        <div class="placard-title">cleanest fit</div>
+        <ul>
+          <li>Relics are genuinely a bag.</li>
+          <li>3–8 typical inventory.</li>
+          <li>Identity-driven (emb) + state-driven (counter, active).</li>
+        </ul>
+        <div class="placard-title placard-title-spaced">long tail</div>
+        <ul>
+          <li>Generic pool catches everything not promoted to a dedicated scalar.</li>
+        </ul>
+      </div>
+    </div>
+    <figcaption class="fig-caption"><span class="figtag">Exhibit 5</span>Same shape as the piles, with one or two scalars riding along to keep counter / active / mean-amount visible past the pool.</figcaption>
+  </figure>
+
+  <p>This is the cleanest encoding choice in the file because relics fit it. A typical mid-act inventory is 3–8 relics; the pool is genuinely a bag (no order); each relic's effect is identity-driven (the embedding) plus state-driven (the counter and active flag). Mean-pooling drops information about which specific combination of relics is present — but the network can't easily do anything with relic combinatorics anyway, and the pool gets the broad strokes (build leans into discard? counter relics charged up? something is currently active?) into a fixed 10-dim summary.</p>
+
+  <p>Player generic powers are encoded the same way — <code>MAX_POWERS=15</code> slots, embedded into 8-dim with <code>power_emb</code>, mean-pooled, plus the mean of normalized power amounts as a ninth scalar. This catches everything that isn't already a dedicated player buff scalar (so Poison stacks on the player, Envenom, Footwork's stale-stacks counter, etc.). The dedicated scalar set was tuned over time — every time a new power's optimal-play implication turned out to be high-leverage, it got promoted out of the generic pool and into a dedicated slot. The C# <code>PlayerDedicated</code> set in <code>StateSerializer.cs</code> is the source of truth for which powers skip the generic pool.</p>
+
+  <h2 id="mask"><span class="num">§ 7</span>The action mask — 61 bits and a flat indexing scheme</h2>
+
+  <p>The action space is flat: a single 61-element boolean vector. Index 0 is <code>end_turn</code>. Indices 1 through 60 are <code>play(card_idx, target_idx)</code> pairs, encoded as <code>1 + card_idx * MAX_TARGETS + target_idx</code>. So <code>play(card_idx=0, target_idx=0)</code> is index 1, <code>play(card_idx=0, target_idx=5)</code> is index 6, <code>play(card_idx=1, target_idx=0)</code> is index 7, and so on through <code>play(card_idx=9, target_idx=5)</code> at index 60.</p>
+
+  <figure class="fig">
+    <div class="exhibit no-side">
+      <div class="exhibit-bar">
+        <span class="file">model.py · action_mask [B, 61]</span>
+        <span class="num-pill">EXHIBIT 6</span>
+      </div>
+      <div class="exhibit-body action-grid-wrap">
+        <div class="action-grid-body">
+          <div class="end-turn-cell">
+            <div class="ix">0</div>
+            <div class="lb">END_TURN</div>
+          </div>
+          <div class="play-grid">
+            <div class="row-h"></div>
+            <div class="col-h">t=0</div><div class="col-h">t=1</div><div class="col-h">t=2</div><div class="col-h">t=3</div><div class="col-h">t=4</div><div class="col-h">t=5</div>
+            <div class="row-h">c=0</div>
+            <div class="pcell hl-sun">1</div><div class="pcell">2</div><div class="pcell">3</div><div class="pcell">4</div><div class="pcell">5</div><div class="pcell hl-sun">6</div>
+            <div class="row-h">c=1</div>
+            <div class="pcell hl">7</div><div class="pcell">8</div><div class="pcell">9</div><div class="pcell">10</div><div class="pcell">11</div><div class="pcell">12</div>
+            <div class="row-h">c=2</div>
+            <div class="pcell">13</div><div class="pcell">14</div><div class="pcell">15</div><div class="pcell">16</div><div class="pcell">17</div><div class="pcell">18</div>
+            <div class="row-h">c=3</div>
+            <div class="pcell">19</div><div class="pcell">20</div><div class="pcell">21</div><div class="pcell">22</div><div class="pcell">23</div><div class="pcell">24</div>
+            <div class="row-h">c=4</div>
+            <div class="pcell">25</div><div class="pcell">26</div><div class="pcell">27</div><div class="pcell">28</div><div class="pcell">29</div><div class="pcell">30</div>
+            <div class="row-h">c=5</div>
+            <div class="pcell">31</div><div class="pcell">32</div><div class="pcell">33</div><div class="pcell">34</div><div class="pcell">35</div><div class="pcell">36</div>
+            <div class="row-h">c=6</div>
+            <div class="pcell">37</div><div class="pcell">38</div><div class="pcell">39</div><div class="pcell">40</div><div class="pcell">41</div><div class="pcell">42</div>
+            <div class="row-h">c=7</div>
+            <div class="pcell">43</div><div class="pcell">44</div><div class="pcell">45</div><div class="pcell">46</div><div class="pcell">47</div><div class="pcell">48</div>
+            <div class="row-h">c=8</div>
+            <div class="pcell">49</div><div class="pcell">50</div><div class="pcell">51</div><div class="pcell">52</div><div class="pcell">53</div><div class="pcell">54</div>
+            <div class="row-h">c=9</div>
+            <div class="pcell">55</div><div class="pcell">56</div><div class="pcell">57</div><div class="pcell">58</div><div class="pcell">59</div><div class="pcell hl">60</div>
+          </div>
+        </div>
+        <div class="action-formula">flat_index = 1 + card_idx × MAX_TARGETS + target_idx</div>
+        <div class="legal-mini-wrap">
+          <div class="lm-title">⟢ EXAMPLE: a turn's legal_actions ⟣</div>
+          <div class="action-grid-body legal-mini-body">
+            <div class="end-turn-cell mini">
+              <div class="ix">0</div>
+              <div class="lb">END</div>
+            </div>
+            <div class="play-grid">
+              <div class="row-h"></div>
+              <div class="col-h">t=0</div><div class="col-h">t=1</div><div class="col-h">t=2</div><div class="col-h">t=3</div><div class="col-h">t=4</div><div class="col-h">t=5</div>
+              <div class="row-h">c=0</div>
+              <div class="pcell legal">1</div><div class="pcell legal">2</div><div class="pcell legal">3</div><div class="pcell faded">4</div><div class="pcell faded">5</div><div class="pcell faded">6</div>
+              <div class="row-h">c=1</div>
+              <div class="pcell legal">7</div><div class="pcell faded">8</div><div class="pcell faded">9</div><div class="pcell faded">10</div><div class="pcell faded">11</div><div class="pcell faded">12</div>
+              <div class="row-h">c=2</div>
+              <div class="pcell legal">13</div><div class="pcell legal">14</div><div class="pcell legal">15</div><div class="pcell faded">16</div><div class="pcell faded">17</div><div class="pcell faded">18</div>
+              <div class="row-h">c=3</div>
+              <div class="pcell faded">19</div><div class="pcell faded">20</div><div class="pcell faded">21</div><div class="pcell faded">22</div><div class="pcell faded">23</div><div class="pcell faded">24</div>
+              <div class="row-h">c=4</div>
+              <div class="pcell faded">25</div><div class="pcell faded">26</div><div class="pcell faded">27</div><div class="pcell faded">28</div><div class="pcell faded">29</div><div class="pcell faded">30</div>
+              <div class="row-h">c=5</div>
+              <div class="pcell faded">31</div><div class="pcell faded">32</div><div class="pcell faded">33</div><div class="pcell faded">34</div><div class="pcell faded">35</div><div class="pcell faded">36</div>
+              <div class="row-h">c=6</div>
+              <div class="pcell faded">37</div><div class="pcell faded">38</div><div class="pcell faded">39</div><div class="pcell faded">40</div><div class="pcell faded">41</div><div class="pcell faded">42</div>
+              <div class="row-h">c=7</div>
+              <div class="pcell faded">43</div><div class="pcell faded">44</div><div class="pcell faded">45</div><div class="pcell faded">46</div><div class="pcell faded">47</div><div class="pcell faded">48</div>
+              <div class="row-h">c=8</div>
+              <div class="pcell faded">49</div><div class="pcell faded">50</div><div class="pcell faded">51</div><div class="pcell faded">52</div><div class="pcell faded">53</div><div class="pcell faded">54</div>
+              <div class="row-h">c=9</div>
+              <div class="pcell faded">55</div><div class="pcell faded">56</div><div class="pcell faded">57</div><div class="pcell faded">58</div><div class="pcell faded">59</div><div class="pcell faded">60</div>
+            </div>
+          </div>
+          <div class="legal-mini-cap">7 legal actions · faded cells masked to <code>False</code> · <code>logits.masked_fill(~mask, -1e9)</code></div>
+        </div>
+      </div>
+    </div>
+    <figcaption class="fig-caption"><span class="figtag">Exhibit 6</span>The output side. Every illegal action is <code>False</code>. The forward pass masks logits to <code>-1e9</code> before the softmax.</figcaption>
+  </figure>
+
+  <p>Every illegal action — a card that costs more energy than I have, a play targeting a dead enemy slot, a play of a non-targeted card with the wrong target index — gets <code>False</code> in the mask. The forward pass masks logits to <code>-1e9</code> before the softmax:</p>
+
+  <div class="codeblock">
+    <div class="code-file">src/bot/model.py · forward</div>
+<pre><code>{`logits = logits.masked_fill(~enc.action_mask, -1e9)`}</code></pre>
+  </div>
+
+  <p><code>action_index_to_dict()</code> is the inverse — given an index sampled from the masked policy distribution, decode to <code>{`{"type": "play", "card_idx": ..., "target_idx": ...}`}</code> for the bridge to send back to C#. The mapping is total: every legal action in <code>legal_actions</code> (built C#-side in <code>StateSerializer.GetLegalActions</code>) corresponds to exactly one mask index, and every mask index corresponds to at most one game-side action.</p>
+
+  <p>The thing the action mask hides is target-type semantics. A card with <code>TargetType=AnyEnemy</code> produces six mask entries (one per target slot), gated by the mask on which enemy slots are real. A card with <code>TargetType=Self</code> produces one mask entry at <code>target_idx=-1</code>, which the encoder maps to <code>target_idx=0</code> per the encoder's hardcoded convention. The C# <code>GetLegalActions</code> does the disambiguation: AnyEnemy cards produce one action per legal target; non-targeted cards produce a single action with <code>target_idx=-1</code>. The Python side trusts the legal-actions list and lets the mask carry the constraint into the network without having to re-learn targeting rules.</p>
+
+  <p>I considered factoring the policy head into separate <code>(card_select, target_select)</code> heads — autoregressive over the action structure — but the flat 61-way head was cheaper, masked correctly, and the multi-head version would have introduced sequence-modeling complexity for almost no gain in a setting with <code>MAX_HAND=10</code> and <code>MAX_TARGETS=6</code>. Flat heads scale fine when the cardinality is in the dozens, not the thousands.</p>
+
+  <h2 id="vs-human"><span class="num">§ 8</span>What the policy actually sees vs. what a human sees</h2>
+
+  <p>Three asymmetries are worth flagging because they shape what the network can and can't learn.</p>
+
+  <p>The network sees the <em>composition</em> of every pile, but not the <em>order</em>. A human player can plan around "I know my Backflip is two cards from the top because I just shuffled in a Reflex that drew it last turn." The network can't. This is partially intentional (real Slay piles are randomized; the order of cards in a draw pile is hidden information from the player too) and partially a mean-pool simplification — even the piles I do reveal order on (the discard pile, which a human can read) are reduced to a bag.</p>
+
+  <div class="docent-row">
+    <div class="docent-card">
+      <div class="lb">human sees</div>
+      <p>A planned-out draw — "I know my Backflip is two cards from the top because I just shuffled in a Reflex that drew it last turn."</p>
+    </div>
+    <div class="docent-card net">
+      <div class="lb">network sees</div>
+      <p>A mean-pooled bag — "draw leans toward attacks." Order is gone everywhere it's gone.</p>
+    </div>
+  </div>
+
+  <p>The network does <em>not</em> see card targeting types as input features — only as a constraint on the action mask. A human player sees "Strike: deal 6 damage to ANY enemy" and reasons about target choice up front. The network reasons about target choice through the combination of per-enemy state (encoded) and the masked logits (constrained). It's a different shape of reasoning, and it's measurably less efficient in early training — the network has to learn target preferences from reward, not from reading the card text.</p>
+
+  <div class="docent-row">
+    <div class="docent-card">
+      <div class="lb">human sees</div>
+      <p>"Strike: deal 6 damage to ANY enemy" — and reasons about target choice up front from the card text.</p>
+    </div>
+    <div class="docent-card net">
+      <div class="lb">network sees</div>
+      <p>Per-enemy state plus the legal-action mask. Target preferences learned through reward, not through reading the card.</p>
+    </div>
+  </div>
+
+  <p>The network sees five player buffs, two combat counters, three turn-action counters, and a mean-pooled bag of everything else. A human sees the full power list rendered on the character. For powers that ended up in the dedicated set, the network has parity. For everything in the generic pool, the network sees a learned summary that probably loses a lot of fine-grained signal — and this is the place where new blindspots are most likely to surface as the curriculum expands.</p>
+
+  <div class="docent-row">
+    <div class="docent-card">
+      <div class="lb">human sees</div>
+      <p>The full power list rendered on the character. Every buff, debuff, counter visible.</p>
+    </div>
+    <div class="docent-card net">
+      <div class="lb">network sees</div>
+      <p>Seven dedicated scalars + an 8-dim mean-pooled bag of everything else. Where new blindspots are most likely to surface.</p>
+    </div>
+  </div>
+
+  <h2 id="bought"><span class="num">§ 9</span>What this bought, and what it cost</h2>
+
+  <p>Three things this encoder gets right:</p>
+
+  <p><strong>Embedding tables for identity, scalar features for mechanics.</strong> Cards, enemies, relics, and powers all use the same trick: a learned embedding for "what is this thing" plus a hardcoded scalar block for "what does this thing do mechanically." The embeddings learn from reward; the scalars are correct from day zero. New cards entering vocab get a random embedding and start contributing useful signal immediately because the scalars (cost, type, keywords) are already correct — the embedding only has to learn the identity-specific bits on top.</p>
+
+  <p><strong>Dedicated scalars for high-leverage state.</strong> The five player buffs, the four enemy intent flags, the dedicated enemy powers — none of these go through the generic mean-pooled pool. Each one has a fixed slot, a precise normalization range, and zero capacity contention with neighboring features. The generic pool exists for the long tail; it isn't doing high-leverage work.</p>
+
+  <p><strong>Saturation where saturation is correct.</strong> Turn at 20. Max HP at 1000. Strength at ±300. Intent damage at 50. Every cap is set past the support of the data so the saturation never bites in practice, and inside the support every value lives in an interval the network can resolve.</p>
+
+  <p>Three things it costs:</p>
+
+  <p><strong>Pile composition is a single moment, not a distribution.</strong> Mean-pooling the piles loses the second-and-higher moments. The network can tell "draw pile leans toward attacks" but not "draw pile is bimodal." The deferred fix (per-pile type-count histograms) is on the queue.</p>
+
+  <p><strong>Order is gone everywhere it's gone.</strong> Piles, relics, enemy powers — all bags. The network has no way to express "in this specific order." For Slay-style play this is mostly correct; for any future curriculum that adds order-dependent mechanics (positional enemies, sequencing-dependent card synergies) it's a hard limit.</p>
+
+  <p><strong>Target-type as a constraint, not a feature.</strong> The network learns target preferences through reward and mask, not through reading the card. This works but is sample-inefficient in the early curriculum.</p>
+
+  <p>The encoder isn't a static thing. Every entry in <code>docs/blindspot.md</code> is a place where the input shape was once wrong, the network failed to learn something a human-reading-the-card would have learned for free, and a new feature got grafted on. The current shape is the version after seven such rounds of grafting, plus a <code>SchemaVersion = 7</code> constant in <code>StateSerializer.cs</code> that gets incremented every time the JSON shape changes. The right way to read <code>model.py</code>'s constants block isn't as a design — it's as a snapshot. Each number is a bet that paid off enough not to be overwritten yet.</p>
+
+  <div class="principle">
+    <p class="quote">If I had to defend one decision in this whole encoder, it would be <code>_norm</code> with the asymmetric anchor.</p>
+    <p>Six characters of code. One division. Zero clamp on the negative side. The difference between a network that knows what <code>strength=0</code> means and one that has to learn it from the data.</p>
+  </div>
+
+  <figure class="fig">
+    <div class="exhibit no-side">
+      <div class="exhibit-bar">
+        <span class="file">model.py · the contract</span>
+        <span class="num-pill">EXHIBIT 7</span>
+      </div>
+      <div class="exhibit-body">
+        <div class="tableau">
+          <div class="tab-cell">
+            <div class="tab-lb">scalars</div>
+            <div class="tab-scalar-grid">
+              <div></div><div></div><div></div><div></div><div></div><div></div>
+              <div class="dec"></div><div></div><div class="dec"></div><div></div><div></div><div class="dec"></div>
+              <div></div><div></div><div></div><div></div><div></div><div></div>
+            </div>
+            <div class="tab-dim">18 dims · ex 1</div>
+          </div>
+          <div class="tab-cell">
+            <div class="tab-lb">hand</div>
+            <div class="tab-stack">
+              <div></div><div></div><div></div><div></div><div></div>
+              <div></div><div></div><div></div><div></div><div></div>
+            </div>
+            <div class="tab-dim">10 × 27 = 270 · ex 2</div>
+          </div>
+          <div class="tab-cell">
+            <div class="tab-lb">enemies</div>
+            <div class="tab-stack enemy">
+              <div></div><div></div><div></div>
+              <div class="padded"></div><div class="padded"></div><div class="padded"></div>
+            </div>
+            <div class="tab-dim">6 × 42 = 252 · ex 3</div>
+          </div>
+          <div class="tab-cell">
+            <div class="tab-lb">pile pools</div>
+            <div class="tab-pool-rows">
+              <div class="tab-pool-row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+              <div class="tab-pool-row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+              <div class="tab-pool-row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+            </div>
+            <div class="tab-dim">3 × 8 = 24 · ex 4</div>
+          </div>
+          <div class="tab-cell">
+            <div class="tab-lb">trailing</div>
+            <div class="tab-pool-rows">
+              <div class="tab-pool-row trailing"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div class="scalar"></div><div class="scalar"></div></div>
+              <div class="tab-pool-row trailing"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div class="scalar"></div></div>
+            </div>
+            <div class="tab-dim">10 + 9 = 19 · ex 5</div>
+          </div>
+          <div class="tab-cell">
+            <div class="tab-lb">action mask</div>
+            <div class="tab-mask">
+              <div class="tab-mask-end"></div>
+              <div class="tab-mask-grid">
+                {Array.from({length: 60}, () => <div></div>)}
+              </div>
+            </div>
+            <div class="tab-dim">1 + 60 = 61 · ex 6</div>
+          </div>
+          <div class="tab-cell tab-cell-caption">
+            Six exhibits sum to 583 trunk-input dims · the seventh is the 61-bit output mask · each number is a bet that paid off enough not to be overwritten yet.
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption class="fig-caption"><span class="figtag">Exhibit 7</span>The full map. Six shapes for the input, one for the output. Each one is a snapshot of seven rounds of grafting.</figcaption>
+  </figure>
+
+</Post>
+
+<style>
+  /* ── Strip any default dropcap behaviour defensively ─────────── */
+  .body-frame p:first-of-type::first-letter {
+    font-size: inherit; float: none; padding: 0;
+    color: inherit; font-weight: inherit; line-height: inherit;
+    font-family: inherit;
+  }
+
+  /* Embedding cells use a darker shade of lake to read as "opaque" */
+  .lake-deep { color: #2c5366; }
+
+  /* ── Hero icon strip — sits below the signpost meta row ──────── */
+  .hero-icon-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin: -8px 0 28px;
+    padding-bottom: 14px;
+    border-bottom: 1px dashed var(--ink-soft);
+  }
+  .badge-line {
+    font-family: var(--mono);
+    font-size: 0.65625rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    font-weight: 600;
+  }
+  .hero-icon-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .mini-mask {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px;
+    align-items: center;
+    background: var(--paper-2);
+    border: 1.5px solid var(--ink);
+    padding: 8px 10px;
+  }
+  .mini-mask .mm-end {
+    width: 22px; height: 22px;
+    background: var(--ink); color: var(--sun);
+    font-family: var(--mono);
+    font-size: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+    border: 1.5px solid var(--rust);
+  }
+  .mini-mask .mm-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 5px);
+    grid-template-rows: repeat(10, 5px);
+    gap: 1px;
+  }
+  .mini-mask .mm-grid > div { background: var(--paper); border: 0.5px solid var(--ink-soft); }
+  .mini-mask .mm-grid > div.mh { background: var(--rust); border-color: var(--rust); }
+  .hero-icon-cap {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    font-weight: 700;
+    text-align: right;
+  }
+
+  /* ── Lede ────────────────────────────────────────────────────── */
+  .lede {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.3125rem;
+    line-height: 1.5;
+    color: var(--ink);
+    margin: 0 0 1.5rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--ink-soft);
+  }
+
+  /* ── Body prose ─────────────────────────────────────────────── */
+  .body-frame p, .body-frame li {
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--ink);
+  }
+  .body-frame p { margin: 0 0 0.875rem; }
+  .body-frame ul, .body-frame ol { margin: 0 0 1rem 1.25rem; }
+  .body-frame ul li, .body-frame ol li { margin: 0 0 0.4rem; }
+  .body-frame strong { font-weight: 700; }
+  .body-frame em { font-style: italic; }
+  .body-frame code {
+    font-family: var(--mono);
+    font-size: 0.875rem;
+    background: var(--paper-3);
+    padding: 1px 4px;
+    border-radius: 2px;
+  }
+
+  /* ── Section H2 ─────────────────────────────────────────────── */
+  .body-frame h2 {
+    font-family: var(--serif);
+    font-size: 1.625rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 2.25rem 0 0.875rem;
+    letter-spacing: -0.005em;
+    line-height: 1.15;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .body-frame h2 .num {
+    font-family: var(--serif);
+    font-size: 0.8125rem;
+    color: var(--rust);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  svg.under {
+    display: block;
+    color: var(--rust);
+    width: 90px;
+    height: 8px;
+    margin: -2px 0 14px;
+  }
+
+  /* ── Code block ─────────────────────────────────────────────── */
+  .codeblock {
+    background: var(--paper-3);
+    border: 1.5px solid var(--ink);
+    margin: 18px 0;
+    overflow: hidden;
+    border-radius: 0;
+  }
+  .codeblock .code-file {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 8px 14px;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+  }
+  .codeblock pre {
+    margin: 0;
+    padding: 14px 18px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.78125rem;
+    line-height: 1.55;
+    color: var(--ink);
+    background: var(--paper-3);
+    border: none;
+  }
+  .codeblock pre code { background: none; padding: 0; font-size: inherit; }
+
+  /* ── Exhibit shell ──────────────────────────────────────────── */
+  figure.fig { margin: 24px 0 32px; }
+  .fig-caption {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 0.84375rem;
+    color: var(--ink-soft);
+    margin-top: 10px;
+    padding-left: 14px;
+    border-left: 2px solid var(--rust);
+    line-height: 1.5;
+  }
+  .fig-caption .figtag {
+    font-family: var(--mono);
+    font-style: normal;
+    font-size: 0.65625rem;
+    color: var(--rust);
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-right: 6px;
+  }
+
+  .exhibit {
+    background: var(--paper-2);
+    border: 1.5px solid var(--ink);
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 1fr 130px;
+  }
+  .exhibit-bar {
+    grid-column: 1 / -1;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 10px 16px;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-transform: uppercase;
+  }
+  .exhibit-bar .file { color: var(--paper); font-weight: 600; }
+  .exhibit-bar .num-pill {
+    background: var(--rust);
+    color: var(--paper);
+    padding: 3px 10px;
+    font-size: 0.59375rem;
+    letter-spacing: 0.18em;
+    font-weight: 700;
+    border-radius: 2px;
+  }
+  .exhibit-body {
+    padding: 18px 20px;
+    background: var(--paper-2);
+    background-image: radial-gradient(circle, rgba(31, 44, 32, 0.03) 1px, transparent 1.2px);
+    background-size: 18px 18px;
+    min-height: 160px;
+  }
+  .exhibit-side {
+    padding: 18px 14px;
+    background: var(--paper-3);
+    border-left: 1px dashed var(--ink-soft);
+    font-family: var(--mono);
+    font-size: 0.65625rem;
+    line-height: 1.6;
+    color: var(--ink-soft);
+  }
+  .exhibit-side .placard-title {
+    color: var(--rust);
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-size: 0.59375rem;
+    border-bottom: 1px solid var(--rust);
+    padding-bottom: 4px;
+    margin-bottom: 8px;
+  }
+  .exhibit-side .placard-title.placard-title-spaced { margin-top: 10px; }
+  .exhibit-side ul { list-style: none; margin: 0; padding: 0; }
+  .exhibit-side li {
+    padding: 4px 0;
+    border-bottom: 1px dashed var(--ink-soft);
+    font-size: 0.65625rem;
+    line-height: 1.45;
+  }
+  .exhibit-side li:last-child { border-bottom: none; }
+  .exhibit-side .bli-tag {
+    display: inline-block;
+    color: var(--rust);
+    font-weight: 700;
+    font-size: 0.5625rem;
+    letter-spacing: 0.1em;
+    background: var(--paper);
+    padding: 1px 4px;
+    border: 1px solid var(--rust);
+    margin-right: 4px;
+  }
+  .exhibit-side .placard-code {
+    font-family: var(--mono);
+    font-size: 0.5625rem;
+    background: var(--paper);
+    border-radius: 2px;
+  }
+
+  .exhibit.no-side { grid-template-columns: 1fr; }
+
+  /* ── Exhibit index (in §1) ─────────────────────────────────── */
+  .exhibit-index {
+    background: var(--paper-2);
+    border: 1.5px solid var(--ink);
+    overflow: hidden;
+    margin: 18px 0;
+  }
+  .exhibit-index .ei-bar {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 8px 14px;
+    font-family: var(--mono);
+    font-size: 0.65625rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .exhibit-index ul { list-style: none; padding: 6px 0; margin: 0; }
+  .exhibit-index li {
+    display: grid;
+    grid-template-columns: 100px 90px 1fr;
+    gap: 14px;
+    padding: 7px 16px;
+    font-family: var(--mono);
+    font-size: 0.71875rem;
+    border-bottom: 1px dashed var(--ink-soft);
+    align-items: center;
+    color: var(--ink);
+    line-height: 1.4;
+  }
+  .exhibit-index li:last-child { border-bottom: none; }
+  .exhibit-index .ei-num {
+    color: var(--rust);
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    font-size: 0.65625rem;
+  }
+  .exhibit-index .ei-dim { color: var(--ink-soft); font-style: italic; }
+  .exhibit-index .ei-name { color: var(--ink); font-weight: 500; }
+  .exhibit-index li.ei-divider {
+    border-top: 1.5px solid var(--ink);
+    grid-template-columns: 1fr;
+    font-style: italic;
+    color: var(--ink-soft);
+    font-size: 0.625rem;
+    padding: 4px 16px;
+    background: var(--paper-3);
+    text-align: center;
+  }
+
+  /* ── Exhibit 1 — scalar 3×6 grid ───────────────────────────── */
+  .scalar-3x6 {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 3px;
+  }
+  .scalar-cell {
+    background: var(--paper);
+    border: 1px solid var(--ink-soft);
+    height: 50px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 0.59375rem;
+    color: var(--ink);
+    padding: 2px 4px;
+    text-align: center;
+    line-height: 1.15;
+  }
+  .scalar-cell.dec { border: 2px solid var(--rust); }
+  .scalar-cell .lbl { font-weight: 700; }
+  .scalar-cell .frm {
+    font-size: 0.46875rem;
+    color: var(--ink-soft);
+    font-style: italic;
+    margin-top: 2px;
+  }
+
+  /* ── Exhibits 2 & 3 — slot-card + stack ────────────────────── */
+  .slot-detail {
+    display: flex;
+    gap: 2px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .slot-cell {
+    min-width: 34px;
+    height: 42px;
+    background: var(--paper);
+    border: 1px solid var(--ink-soft);
+    font-family: var(--mono);
+    font-size: 0.5625rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 3px;
+    text-align: center;
+    line-height: 1.1;
+  }
+  .slot-cell.emb {
+    background: #2c5366;
+    color: var(--paper);
+    border-color: #2c5366;
+  }
+  .slot-cell.scalar { background: var(--paper-3); }
+  .slot-cell.pool {
+    background: var(--paper-2);
+    border: 1px dashed var(--ink-soft);
+    color: var(--ink-soft);
+  }
+  .slot-cell.bli { border: 2px solid var(--rust); }
+  .slot-cell .lbl { font-weight: 700; font-size: 0.5625rem; }
+  .slot-detail-cap {
+    font-family: var(--mono);
+    font-size: 0.59375rem;
+    color: var(--ink-soft);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    font-weight: 700;
+  }
+
+  .slot-stack { margin-top: 16px; }
+  .slot-stack-cap {
+    font-family: var(--mono);
+    font-size: 0.59375rem;
+    color: var(--rust);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    font-weight: 700;
+  }
+  .slot-stack-row {
+    display: flex;
+    gap: 4px;
+    align-items: flex-end;
+  }
+  .mini-slot-wrap { flex: 1; }
+  .mini-slot {
+    height: 24px;
+    background: var(--paper);
+    border: 1px solid var(--ink-soft);
+    display: flex;
+  }
+  .mini-slot .mse { flex: 0 0 60%; background: #2c5366; }
+  .mini-slot .mss { flex: 0 0 30%; background: var(--paper-3); }
+  .mini-slot .msp { flex: 0 0 10%; background: var(--paper-2); border-left: 1px dashed var(--ink-soft); }
+  .mini-slot.padded { opacity: 0.32; }
+  .mini-slot.enemy .mse { flex: 0 0 38%; }
+  .mini-slot.enemy .mss { flex: 0 0 40%; }
+  .mini-slot.enemy .msp { flex: 0 0 22%; }
+  .mini-slot-lb {
+    font-family: var(--mono);
+    font-size: 0.53125rem;
+    color: var(--ink-soft);
+    text-align: center;
+    margin-top: 2px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── Exhibits 4 & 5 — pool diagrams ────────────────────────── */
+  .pool-diagram-multi {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .pool-diagram {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 14px;
+    align-items: center;
+  }
+  .pool-bucket {
+    background: var(--paper);
+    border: 1.5px solid var(--ink);
+    padding: 12px 14px;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    line-height: 1.6;
+  }
+  .pool-bucket .bucket-title {
+    color: var(--rust);
+    font-weight: 700;
+    font-size: 0.625rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    border-bottom: 1px dashed var(--ink-soft);
+    padding-bottom: 4px;
+    margin-bottom: 8px;
+  }
+  .pool-bucket .bucket-ids {
+    font-style: italic;
+    color: var(--ink-soft);
+    font-size: 0.65625rem;
+    line-height: 1.5;
+  }
+  .pool-op {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    color: var(--rust);
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.12em;
+    font-weight: 700;
+  }
+  .pool-op .diamond {
+    width: 64px;
+    height: 64px;
+    background: var(--paper);
+    border: 2px solid var(--rust);
+    transform: rotate(45deg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .pool-op .diamond-inner {
+    transform: rotate(-45deg);
+    font-family: var(--mono);
+    font-size: 0.5625rem;
+    color: var(--rust);
+    text-align: center;
+    line-height: 1.3;
+    letter-spacing: 0;
+    text-transform: none;
+    font-weight: 700;
+  }
+  .pool-op .op-lb {
+    font-size: 0.5625rem;
+    letter-spacing: 0.16em;
+  }
+  .pool-output {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+  }
+  .pool-output-cells {
+    display: flex;
+    gap: 2px;
+    justify-content: center;
+  }
+  .pool-output-cells .pc {
+    width: 28px;
+    height: 24px;
+    background: var(--paper-2);
+    border: 1px dashed var(--ink-soft);
+    font-family: var(--mono);
+    font-size: 0.5625rem;
+    color: var(--ink-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .pool-output-lb {
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    color: var(--rust);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .pool-output-extra {
+    font-family: var(--mono);
+    font-size: 0.59375rem;
+    color: var(--ink-soft);
+    font-style: italic;
+    margin-top: 4px;
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  /* ── Exhibit 6 — full action mask grid ─────────────────────── */
+  .action-grid-wrap { padding: 0; }
+  .action-grid-body {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 18px;
+    padding: 14px;
+    align-items: center;
+  }
+  .end-turn-cell {
+    width: 78px;
+    height: 78px;
+    background: var(--ink);
+    color: var(--paper);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    border: 2px solid var(--rust);
+  }
+  .end-turn-cell .ix { font-size: 1.125rem; color: var(--sun); }
+  .end-turn-cell .lb { margin-top: 3px; font-size: 0.5625rem; }
+  .end-turn-cell.mini { width: 54px; height: 54px; font-size: 0.5rem; }
+  .end-turn-cell.mini .ix { font-size: 0.875rem; }
+  .end-turn-cell.mini .lb { font-size: 0.4375rem; }
+
+  .play-grid {
+    display: grid;
+    grid-template-columns: auto repeat(6, 1fr);
+    gap: 2px;
+    font-family: var(--mono);
+    font-size: 0.59375rem;
+  }
+  .play-grid .col-h, .play-grid .row-h {
+    color: var(--rust);
+    font-size: 0.53125rem;
+    letter-spacing: 0.12em;
+    font-weight: 700;
+    padding: 2px 4px;
+  }
+  .play-grid .col-h { text-align: center; }
+  .play-grid .row-h { text-align: right; }
+  .play-grid .pcell {
+    background: var(--paper);
+    border: 1px solid var(--ink-soft);
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-soft);
+    font-size: 0.5625rem;
+  }
+  .play-grid .pcell.hl {
+    background: var(--rust);
+    color: var(--paper);
+    border-color: var(--rust);
+    font-weight: 700;
+  }
+  .play-grid .pcell.hl-sun {
+    background: var(--sun);
+    color: var(--ink);
+    border-color: var(--sun);
+    font-weight: 700;
+  }
+  .play-grid .pcell.faded { opacity: 0.32; }
+  .play-grid .pcell.legal {
+    background: var(--moss);
+    color: var(--paper);
+    border-color: var(--moss);
+    opacity: 1;
+  }
+  .action-formula {
+    padding: 8px 14px;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--ink);
+    background: var(--paper-3);
+    border-top: 1px dashed var(--ink-soft);
+    text-align: center;
+  }
+  .legal-mini-wrap {
+    padding: 8px 14px 14px;
+    background: var(--paper-3);
+    border-top: 1px dashed var(--ink-soft);
+  }
+  .legal-mini-wrap .lm-title {
+    font-family: var(--mono);
+    font-size: 0.59375rem;
+    color: var(--rust);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .legal-mini-body { padding: 0; gap: 14px; }
+  .legal-mini-cap {
+    font-family: var(--mono);
+    font-size: 0.59375rem;
+    color: var(--ink-soft);
+    margin-top: 6px;
+    font-style: italic;
+    text-align: center;
+  }
+  .legal-mini-cap code {
+    font-size: 0.59375rem;
+    background: var(--paper);
+    padding: 0 3px;
+  }
+
+  /* ── §8 docent paired comparison ───────────────────────────── */
+  .docent-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin: 14px 0 18px;
+  }
+  .docent-card {
+    background: var(--paper-2);
+    border: 1.5px solid var(--ink);
+    padding: 14px 16px;
+  }
+  .docent-card.net { border-color: var(--lake); }
+  .docent-card .lb {
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink);
+    font-weight: 700;
+    margin-bottom: 6px;
+    padding-bottom: 5px;
+    border-bottom: 1px dashed var(--ink-soft);
+  }
+  .docent-card.net .lb { color: var(--lake); }
+  .docent-card p {
+    font-size: 0.84375rem;
+    line-height: 1.55;
+    color: var(--ink);
+    margin: 0;
+  }
+
+  /* ── Principle panel ──────────────────────────────────────── */
+  .principle {
+    background: linear-gradient(135deg, var(--paper-2), var(--paper-3));
+    border: 1.5px solid var(--rust);
+    border-left: 5px solid var(--rust);
+    border-radius: 4px;
+    padding: 24px 28px;
+    margin: 30px 0 14px;
+  }
+  .principle .quote {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.375rem;
+    line-height: 1.4;
+    color: var(--ink);
+    margin-bottom: 14px;
+    font-weight: 700;
+  }
+  .principle p {
+    font-size: 0.96875rem;
+    line-height: 1.65;
+    margin: 0 0 12px;
+  }
+  .principle p:last-child { margin-bottom: 0; }
+  .principle code {
+    font-size: 0.875rem;
+    background: var(--paper);
+    padding: 1px 4px;
+    border-radius: 2px;
+  }
+
+  /* ── Exhibit 7 — closing tableau ───────────────────────────── */
+  .tableau {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-auto-rows: minmax(108px, auto);
+    gap: 10px;
+  }
+  .tableau .tab-cell {
+    background: var(--paper);
+    border: 1px solid var(--ink-soft);
+    padding: 10px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    justify-content: center;
+    text-align: center;
+  }
+  .tableau .tab-cell .tab-lb {
+    font-family: var(--mono);
+    font-size: 0.5625rem;
+    color: var(--rust);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .tableau .tab-cell .tab-dim {
+    font-family: var(--mono);
+    font-size: 0.53125rem;
+    color: var(--ink-soft);
+    font-style: italic;
+  }
+  .tableau .tab-cell-caption {
+    grid-column: 1 / -1;
+    background: var(--paper-3);
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    color: var(--ink);
+    font-style: italic;
+    line-height: 1.5;
+    padding: 12px 16px;
+  }
+
+  .tab-scalar-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 7px);
+    grid-template-rows: repeat(3, 7px);
+    gap: 1px;
+  }
+  .tab-scalar-grid > div {
+    background: var(--paper-3);
+    border: 0.5px solid var(--ink-soft);
+  }
+  .tab-scalar-grid > div.dec { border: 1.5px solid var(--rust); }
+
+  .tab-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    width: 70px;
+  }
+  .tab-stack > div {
+    height: 4px;
+    background: linear-gradient(to right, #2c5366 60%, var(--paper-3) 60%);
+  }
+  .tab-stack.enemy > div {
+    background: linear-gradient(to right,
+      #2c5366 38%,
+      var(--paper-3) 38%,
+      var(--paper-3) 78%,
+      var(--paper-2) 78%);
+    height: 6px;
+  }
+  .tab-stack > div.padded { opacity: 0.32; }
+
+  .tab-pool-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .tab-pool-row {
+    display: flex;
+    gap: 1px;
+  }
+  .tab-pool-row > div {
+    width: 8px;
+    height: 6px;
+    background: var(--paper-2);
+    border: 0.5px dashed var(--ink-soft);
+  }
+  .tab-pool-row.trailing > div.scalar {
+    background: var(--paper-3);
+    border: 0.5px solid var(--ink-soft);
+  }
+
+  .tab-mask {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .tab-mask-end {
+    width: 8px;
+    height: 8px;
+    background: var(--ink);
+    border: 0.5px solid var(--rust);
+  }
+  .tab-mask-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 4px);
+    grid-template-rows: repeat(10, 4px);
+    gap: 1px;
+  }
+  .tab-mask-grid > div {
+    background: var(--paper);
+    border: 0.5px solid var(--ink-soft);
+  }
+
+  /* ── Right rail (custom dual-panel) ────────────────────────── */
+  .rail {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: sticky;
+    top: 80px;
+  }
+  .rail-panel {
+    background: var(--paper-2);
+    border: 1.5px solid var(--ink);
+    padding: 16px 18px;
+    border-radius: 4px;
+  }
+  .rail-title {
+    font-family: var(--serif);
+    font-size: 0.6875rem;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--rust);
+    font-weight: 700;
+    margin-bottom: 12px;
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--ink-soft);
+  }
+  .rail-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+  }
+  .rail-list a {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 7px 0;
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 0.78125rem;
+    line-height: 1.4;
+    border-bottom: 1px dashed var(--ink-soft);
+    font-weight: 500;
+  }
+  .rail-list li:last-child a { border-bottom: none; }
+  .rail-list .marker {
+    color: var(--rust);
+    font-family: var(--serif);
+    font-weight: 700;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+    width: 22px;
+  }
+  .rail-list a:hover { color: var(--rust); }
+  .ex-index { font-family: var(--mono); font-size: 0.65625rem; }
+  .ex-index .ex-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 6px;
+    padding: 4px 0;
+    border-bottom: 1px dashed var(--ink-soft);
+    align-items: center;
+  }
+  .ex-index .ex-row:last-child { border-bottom: none; }
+  .ex-index .ex-row .ex-tag {
+    color: var(--rust);
+    font-weight: 700;
+    font-size: 0.59375rem;
+    letter-spacing: 0.1em;
+  }
+  .ex-index .ex-row .ex-name { color: var(--ink); }
+  .ex-index .ex-row .ex-dim {
+    color: var(--ink-soft);
+    font-style: italic;
+    font-size: 0.59375rem;
+  }
+  .ex-index .ex-divider {
+    margin: 6px 0;
+    border-top: 1.5px solid var(--ink);
+    padding-top: 6px;
+    font-style: italic;
+    color: var(--ink-soft);
+    text-align: center;
+    font-size: 0.59375rem;
+  }
+
+  /* ── Mobile ───────────────────────────────────────────────── */
+  @media (max-width: 880px) {
+    .hero-icon-strip { flex-direction: column; align-items: flex-start; }
+    .hero-icon-wrap { align-items: flex-start; }
+
+    .exhibit { grid-template-columns: 1fr; }
+    .exhibit-side { border-left: none; border-top: 1px dashed var(--ink-soft); }
+
+    .scalar-3x6 { grid-template-columns: repeat(3, 1fr); }
+
+    .slot-detail { gap: 1px; }
+    .slot-cell { min-width: 28px; height: 36px; font-size: 0.5rem; }
+
+    .pool-diagram { grid-template-columns: 1fr; }
+    .pool-op .diamond { width: 56px; height: 56px; }
+
+    .docent-row { grid-template-columns: 1fr; }
+
+    .action-grid-body { grid-template-columns: 1fr; }
+    .end-turn-cell { width: 100%; height: 44px; flex-direction: row; gap: 12px; }
+    .play-grid { font-size: 0.5rem; }
+    .play-grid .pcell { height: 18px; font-size: 0.46875rem; }
+
+    .tableau { grid-template-columns: 1fr; }
+
+    .exhibit-index li {
+      grid-template-columns: 90px 70px 1fr;
+      gap: 8px;
+      font-size: 0.625rem;
+    }
+
+    .rail { position: static; }
+  }
+</style>
+
